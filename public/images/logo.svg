@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 72" width="384" height="72" role="img" aria-label="BRProperty - Real Estate &amp; Consultancy">
+  <g transform="translate(4 4)">
+    <rect width="64" height="64" rx="14" fill="#161d21"/>
+    <path d="M15 27.5 L32 14 L49 27.5" fill="none" stroke="#b87333" stroke-width="4.2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="32" y="50" text-anchor="middle" font-family="Instrument Serif, Georgia, 'Times New Roman', serif"
+          font-size="26" letter-spacing="-0.5" fill="#f9f7f4">BR</text>
+  </g>
+  <text x="84" y="38" font-family="Instrument Serif, Georgia, 'Times New Roman', serif"
+        font-size="25" fill="#161d21">BRProperty</text>
+  <text x="85" y="55" font-family="Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+        font-size="9" font-weight="600" letter-spacing="2.3" fill="#995d27">REAL ESTATE &amp; CONSULTANCY</text>
+</svg>

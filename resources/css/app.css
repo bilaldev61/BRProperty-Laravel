@@ -1,0 +1,314 @@
+@import 'tailwindcss';
+@import 'sweetalert2/dist/sweetalert2.min.css';
+@import './viz.css';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../js/**/*.vue';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+
+    /* ---- Ink: slate charcoal. Text, dark panels, "sold". ---- */
+    /* Cool blue-grey slate - the backbone neutral of the slate + copper scheme. */
+    --color-ink-50:  #f2f4f5;
+    --color-ink-100: #e3e7ea;
+    --color-ink-200: #c8d0d6;
+    --color-ink-300: #a3aeb7;
+    --color-ink-400: #74808b;
+    --color-ink-500: #556169;
+    --color-ink-600: #3d474e;
+    --color-ink-700: #2c353b;
+    --color-ink-800: #1f272c;
+    --color-ink-900: #161d21;
+    --color-ink-950: #0c1114;
+
+    /* ---- Sand: off-white. The page base (warm, but far cooler than cream). ---- */
+    --color-sand-50:  #f9f7f4;
+    --color-sand-100: #f2eee8;
+    --color-sand-200: #e5ded4;
+    --color-sand-300: #d2c7b8;
+
+    /* ---- Brass: COPPER. The one accent every page leans on. ---- */
+    /* Warm metal against cool slate - eyebrows, focus rings, highlights. */
+    --color-brass-50:  #fbf2e9;
+    --color-brass-100: #f6e0cb;
+    --color-brass-200: #ecc19c;
+    --color-brass-300: #e2ab7c;
+    --color-brass-400: #d08f55;
+    --color-brass-500: #b87333;
+    --color-brass-600: #995d27;
+    --color-brass-700: #7a481d;
+
+    /* ---- Teal: "for sale", available, success. GREEN. ---- */
+    /* Green means one thing only - it is on the market. */
+    --color-teal-50:  #eef5f0;
+    --color-teal-100: #d7e9dc;
+    --color-teal-200: #aed3b8;
+    --color-teal-300: #82b792;
+    --color-teal-400: #54976a;
+    --color-teal-500: #2f7d4f;
+    --color-teal-600: #246440;
+    --color-teal-700: #1a4b30;
+
+    /* ---- Clay: DUSTY ROSE. Featured listings, buyer side, high priority. ---- */
+    --color-clay-50:  #faf0f1;
+    --color-clay-100: #f3dade;
+    --color-clay-200: #e6b5bd;
+    --color-clay-300: #d28f9a;
+    --color-clay-400: #bb6b78;
+    --color-clay-500: #a4535f;
+    --color-clay-600: #874049;
+    --color-clay-700: #6a3138;
+
+    /* ---- Indigo: SLATE BLUE. Rentals and informational blocks. ---- */
+    --color-indigo-50:  #eff3f8;
+    --color-indigo-100: #dae3ee;
+    --color-indigo-200: #b5c7de;
+    --color-indigo-300: #8ba6c6;
+    --color-indigo-400: #6285aa;
+    --color-indigo-500: #3d5a80;
+    --color-indigo-600: #2f4766;
+    --color-indigo-700: #24364e;
+
+    /* ---- Ochre: NEW. GOLD/MUSTARD. Property management, landlords. ---- */
+    /* A second warm metal, yellower than copper so the two never read as
+       the same accent side by side. */
+    --color-ochre-50:  #fbf5e6;
+    --color-ochre-100: #f6e8c4;
+    --color-ochre-200: #ecd28e;
+    --color-ochre-300: #ddb557;
+    --color-ochre-400: #c99a2e;
+    --color-ochre-500: #b08327;
+    --color-ochre-600: #91691d;
+    --color-ochre-700: #715118;
+
+    /* ---- Plum: NEW. Editorial - the blog and long-form guides. ---- */
+    --color-plum-50:  #f6f0f7;
+    --color-plum-100: #e9dcec;
+    --color-plum-200: #d3bad8;
+    --color-plum-300: #b592bd;
+    --color-plum-400: #92699c;
+    --color-plum-500: #744d7d;
+    --color-plum-600: #5c3d63;
+    --color-plum-700: #472f4d;
+
+    /* ---- Overrides for Tailwind default palette so brand flows EVERYWHERE ----
+     * .card / .input / .chip / flash messages / validation errors / admin
+     * badges all use these plain Tailwind names. Without overriding them the
+     * site keeps a stark-white + generic-red look no matter how we retint the
+     * named tokens above. Changing --color-white alone re-skins every card
+     * and input at once; --color-red-* and --color-emerald-* align the rest. */
+    --color-white: #fdfcfa;
+    --color-black: #0c1114;
+
+    /* `red-*` = error / validation / delete. A clean crimson, kept clearly
+       away from the dusty-rose clay so "featured" never looks like an error. */
+    --color-red-50:  #fdeef0;
+    --color-red-100: #fad5d9;
+    --color-red-200: #f2a9b1;
+    --color-red-300: #e57884;
+    --color-red-400: #d24555;
+    --color-red-500: #b3262e;
+    --color-red-600: #911d26;
+    --color-red-700: #71161d;
+    --color-red-800: #520f14;
+
+    /* `emerald-*` = session success / "Lead" badges / up-tiles. Same ramp as
+       --color-teal, so every success state reads as one colour. */
+    --color-emerald-50:  #eef5f0;
+    --color-emerald-100: #d7e9dc;
+    --color-emerald-200: #aed3b8;
+    --color-emerald-300: #82b792;
+    --color-emerald-400: #54976a;
+    --color-emerald-500: #2f7d4f;
+    --color-emerald-600: #246440;
+    --color-emerald-700: #1a4b30;
+    --color-emerald-800: #143a25;
+
+    --radius-card: 0.875rem;
+}
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-sand-50 text-ink-800 antialiased;
+    }
+
+    h1, h2, h3 {
+        @apply font-display font-normal tracking-tight text-ink-900;
+    }
+
+    :focus-visible {
+        @apply outline-2 outline-offset-2 outline-brass-600;
+    }
+}
+
+/*
+ * Custom classes are declared as @utility (not @layer components) so Tailwind v4
+ * lets us @apply them inside one another - .btn-primary builds on .btn.
+ */
+
+@utility container-page {
+    @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
+}
+
+@utility container-wide {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8;
+}
+
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3
+           text-sm font-semibold transition-colors duration-150
+           disabled:opacity-60 disabled:cursor-not-allowed;
+}
+
+@utility btn-primary {
+    @apply btn bg-ink-900 text-sand-50 hover:bg-ink-700;
+}
+
+@utility btn-accent {
+    @apply btn bg-brass-600 text-white hover:bg-brass-700;
+}
+
+@utility btn-outline {
+    @apply btn border border-ink-300 text-ink-800 hover:border-ink-900 hover:bg-ink-900 hover:text-sand-50;
+}
+
+@utility btn-ghost-light {
+    @apply btn border border-white/30 text-white hover:bg-white hover:text-ink-900;
+}
+
+@utility card {
+    @apply rounded-card border border-ink-100 bg-white overflow-hidden;
+}
+
+/* Frosted surfaces for anything sitting on top of a photograph. The tint is
+   white at low opacity so the photo still shows through; the blur does the
+   legibility work and the hairline border keeps the panel edges readable. */
+@utility glass-panel {
+    @apply rounded-3xl border border-white/15 bg-white/10 shadow-2xl shadow-ink-950/40
+           backdrop-blur-xl;
+}
+
+@utility glass-row {
+    @apply flex items-center gap-4 rounded-2xl border border-white/15 bg-white/10 p-4
+           backdrop-blur-md transition
+           hover:border-white/35 hover:bg-white/15;
+}
+
+@utility label {
+    @apply block text-sm font-semibold text-ink-700 mb-1.5;
+}
+
+/* Same rhythm as .label, inverted for forms sitting inside .glass-panel. */
+@utility label-on-dark {
+    @apply block text-sm font-semibold text-sand-100 mb-1.5;
+}
+
+@utility input {
+    @apply w-full rounded-lg border border-ink-200 bg-white px-4 py-2.5 text-[15px] text-ink-900
+           placeholder:text-ink-400 focus:border-brass-500 focus:ring-2 focus:ring-brass-500/20
+           focus:outline-none transition;
+}
+
+@utility input-error {
+    @apply border-red-400 focus:border-red-500 focus:ring-red-500/20;
+}
+
+@utility eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-brass-600;
+}
+
+/* ---- Section bands ------------------------------------------------------
+ * Pages alternate between these instead of running one flat neutral, so a long
+ * page has rhythm. Each is a tint of a palette colour, never a saturated block.
+ */
+/*
+ * Built at runtime in selling.blade.php ("border-t-{$tone}-500"), so Tailwind's
+ * scanner cannot see them. Listed here to keep them in the build.
+ */
+@source inline("{border-t,text}-{teal,brass,clay,indigo,ochre,plum}-{500,600}");
+
+@utility band-sand {
+    @apply bg-sand-100;
+}
+
+@utility band-teal {
+    @apply bg-teal-50;
+}
+
+@utility band-cream {
+    @apply bg-brass-50;
+}
+
+@utility band-plum {
+    @apply bg-plum-50;
+}
+
+@utility band-rose {
+    @apply bg-clay-50;
+}
+
+@utility band-ink {
+    @apply bg-ink-900 text-sand-100;
+}
+
+/* Warm wash behind the hero - a tint, not a colour block. */
+@utility hero-wash {
+    background:
+        radial-gradient(72rem 38rem at 8% -12%, var(--color-brass-300) 0%, transparent 58%),
+        radial-gradient(58rem 34rem at 96% 4%, var(--color-teal-300) 0%, transparent 55%),
+        radial-gradient(46rem 30rem at 62% 108%, var(--color-clay-200) 0%, transparent 60%),
+        var(--color-sand-100);
+}
+
+/* A card that names its accent: a 3px colour rule along the top edge. */
+@utility card-accent {
+    @apply relative overflow-hidden;
+}
+
+@utility chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1
+           text-xs font-bold tracking-wide uppercase;
+}
+
+@utility prose-page {
+    @apply text-[17px] leading-relaxed text-ink-600;
+
+    & p + p {
+        @apply mt-4;
+    }
+}
+
+/* Same rhythm as .prose-page, inverted for body copy sitting inside a dark hero. */
+@utility prose-page-dark {
+    @apply text-[17px] leading-relaxed text-sand-200;
+
+    & p + p {
+        @apply mt-4;
+    }
+}
+
+/* Keeps the sticky mobile call bar from covering page content. */
+@utility pb-callbar {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+/* ---- SweetAlert2 -------------------------------------------------------- */
+.swal2-popup {
+    font-family: var(--font-sans);
+    background: var(--color-sand-50);
+}
+
+.swal2-actions {
+    gap: 0.5rem;
+}
+
+.swal2-toast {
+    background: var(--color-white) !important;
+}
