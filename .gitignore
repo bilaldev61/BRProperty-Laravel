@@ -19,6 +19,7 @@
 # before committing whenever you change anything under resources/.
 /public/fonts-manifest.dev.json
 /public/hot
+/public/hot.dev
 /public/storage
 /storage/*.key
 /storage/pail
