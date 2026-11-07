@@ -112,45 +112,12 @@
             <p class="mb-4 rounded-lg border border-emerald-300/40 bg-emerald-800/40 px-4 py-3 text-sm text-sand-100">{{ session('status') }}</p>
             @endif
 
-            <x-island
-                name="EnquiryForm"
-                :props="[
-                    'type' => 'contact',
-                    'endpoint' => route('enquiries.store'),
-                    'tone' => 'glass',
-                    'heading' => 'Send a message',
-                    'subheading' => 'Tell us what you need and we will come back to you within one business day.',
-                    'submitLabel' => 'Send message',
-                ]">
-                <h2 class="text-2xl font-semibold text-white sm:text-3xl">Send a message</h2>
-                <p class="mt-2 text-sand-200">Tell us what you need and we will come back to you within one business day.</p>
-                <x-form-skeleton />
-
-                <noscript>
-                    <style>
-                        [data-form-skeleton] {
-                            display: none
-                        }
-                    </style>
-                    <form method="POST" action="{{ route('enquiries.store') }}" class="mt-6 space-y-4">
-                        @csrf
-                        <input type="hidden" name="type" value="contact">
-                        <div>
-                            <label class="label-on-dark" for="noscript-name">Your name</label>
-                            <input id="noscript-name" name="name" type="text" class="input" required>
-                        </div>
-                        <div>
-                            <label class="label-on-dark" for="noscript-email">Email</label>
-                            <input id="noscript-email" name="email" type="email" class="input" required>
-                        </div>
-                        <div>
-                            <label class="label-on-dark" for="noscript-message">Message</label>
-                            <textarea id="noscript-message" name="message" rows="3" class="input"></textarea>
-                        </div>
-                        <button type="submit" class="btn-accent w-full">Send message</button>
-                    </form>
-                </noscript>
-            </x-island>
+            <x-enquiry-form
+                type="contact"
+                tone="glass"
+                heading="Send a message"
+                subheading="Tell us what you need and we will come back to you within one business day."
+                submit-label="Send message" />
         </div>
     </div>
 </section>

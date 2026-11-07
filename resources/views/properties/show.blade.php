@@ -199,47 +199,13 @@
                     <p class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('status') }}</p>
                     @endif
 
-                    <x-island
-                        name="EnquiryForm"
-                        :props="[
-                            'type' => 'property',
-                            'endpoint' => route('enquiries.store'),
-                            'propertyId' => $property->id,
-                            'propertyTitle' => $property->title.' at '.$property->address,
-                            'tone' => 'solid',
-                            'compact' => true,
-                            'heading' => 'Enquire about this property',
-                            'submitLabel' => 'Send enquiry',
-                        ]">
-                        <h2 class="text-2xl">Enquire about this property</h2>
-                        <x-form-skeleton />
-
-                        <noscript>
-                            <style>
-                                [data-form-skeleton] {
-                                    display: none
-                                }
-                            </style>
-                            <form method="POST" action="{{ route('enquiries.store') }}" class="mt-6 space-y-4">
-                                @csrf
-                                <input type="hidden" name="type" value="property">
-                                <input type="hidden" name="property_id" value="{{ $property->id }}">
-                                <div>
-                                    <label class="label" for="noscript-name">Your name</label>
-                                    <input id="noscript-name" name="name" type="text" class="input" required>
-                                </div>
-                                <div>
-                                    <label class="label" for="noscript-email">Email</label>
-                                    <input id="noscript-email" name="email" type="email" class="input" required>
-                                </div>
-                                <div>
-                                    <label class="label" for="noscript-message">Message</label>
-                                    <textarea id="noscript-message" name="message" rows="3" class="input">{{ 'Hi, I\'d like more information about '.$property->title.' at '.$property->address.'.' }}</textarea>
-                                </div>
-                                <button type="submit" class="btn-accent w-full">Send enquiry</button>
-                            </form>
-                        </noscript>
-                    </x-island>
+                    <x-enquiry-form
+                        type="property"
+                        :property-id="$property->id"
+                        :property-title="$property->title.' at '.$property->address"
+                        :compact="true"
+                        heading="Enquire about this property"
+                        submit-label="Send enquiry" />
                 </div>
             </div>
         </aside>

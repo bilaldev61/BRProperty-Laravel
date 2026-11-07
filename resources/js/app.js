@@ -1,10 +1,12 @@
 import { createApp } from 'vue'
 import { confirmAction, toast } from './lib/alert.js'
 
+// Enquiry forms are server HTML; this layer only adds the background submit.
+import './enquiry-form.js'
+
 import MobileNav from './components/MobileNav.vue'
 import PropertyGallery from './components/PropertyGallery.vue'
 import TestimonialCarousel from './components/TestimonialCarousel.vue'
-import EnquiryForm from './components/EnquiryForm.vue'
 import StackedBarChart from './components/StackedBarChart.vue'
 import HBarChart from './components/HBarChart.vue'
 import ReplyDrafter from './components/ReplyDrafter.vue'
@@ -18,14 +20,13 @@ import PropertyAssistant from './components/PropertyAssistant.vue'
  *
  *   <div data-vue="PropertyGallery" data-props='@json([...])'></div>
  *
- * Enquiry forms are islands: the container ships a skeleton and Vue prints the
- * fields after mount.
+ * Enquiry forms are not islands: Laravel prints their fields directly and
+ * ./enquiry-form.js only takes over the submit event.
  */
 const components = {
     MobileNav,
     PropertyGallery,
     TestimonialCarousel,
-    EnquiryForm,
     StackedBarChart,
     HBarChart,
     ReplyDrafter,
