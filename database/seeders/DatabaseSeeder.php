@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             StaffSeeder::class,
             PropertySeeder::class,
+            PropertyMarketFactsSeeder::class,
             TestimonialSeeder::class,
             EnquirySeeder::class,
         ]);

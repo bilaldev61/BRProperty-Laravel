@@ -71,13 +71,35 @@ class QuickAnswers
 
     /** Facts about the listing on screen, answered from its record. */
     private const LISTING_FACTS = [
-        'price'    => '/\b(price|cost|how much|kitne ka|kitne ki|qeemat|qimat|demand|rate)\b/',
-        'size'     => '/\b(size|how big|marla|kanal|sq ?ft|square (feet|foot)|covered area|plot area|land area|kitna bara)\b/',
-        'rooms'    => '/\b(bed(room)?s?|bath(room)?s?|rooms?|kamr[ae]y?|parking|car spaces?|garage)\b/',
-        'status'   => '/\b(available|still for sale|for sale|sold|status|bik gaya|mil sakta)\b/',
-        'location' => '/\b(address|location|located|where is (it|this|the house)|kahan hai|kis jagah)\b/',
-        'features' => '/\b(features|amenities|facilities)\b/',
-        'times'    => '/\b(viewings?|inspection|open house|dekhne ka time)\b/',
+        'price'         => '/\b(price|cost|how much|kitne ka|kitne ki|qeemat|qimat|demand|rate)\b/',
+        'size'          => '/\b(size|how big|marla|kanal|sq ?ft|square (feet|foot)|covered area|plot area|land area|kitna bara)\b/',
+        'rooms'         => '/\b(bed(room)?s?|bath(room)?s?|rooms?|kamr[ae]y?|parking|car spaces?|garage)\b/',
+        'status'        => '/\b(available|still for sale|for sale|sold|status|bik gaya|mil sakta)\b/',
+        'location'      => '/\b(address|location|located|where is (it|this|the house)|kahan hai|kis jagah)\b/',
+        'features'      => '/\b(features|amenities|facilities)\b/',
+        'times'         => '/\b(viewings?|inspection|open house|dekhne ka time)\b/',
+        'view'          => '/\b(view|views|outlook|facing)\b/',
+        'furnishing'    => '/\b(furnished|unfurnished|semi furnished|furnishing)\b/',
+        'completion'    => '/\b(ready|off ?plan|completion date)\b/',
+        'permit'        => '/\b(permit|dld|rera|tra ?khees|registered)\b/',
+    ];
+
+    /**
+     * "Is there a metro nearby?" is one question about one kind of landmark.
+     * Specific kinds are matched before the catch-all, and when both fire the
+     * catch-all is dropped - otherwise "metro nearby" would read as two
+     * questions and be handed to the model for nothing.
+     */
+    private const NEARBY = [
+        'nearby_metro'    => '/\b(metro|monorail|train|public transport)\b/',
+        'nearby_mall'     => '/\b(malls?|shopping (centre|center))\b/',
+        'nearby_school'   => '/\b(schools?|nurser(y|ies))\b/',
+        'nearby_hospital' => '/\b(hospitals?|clinics?|medical cent)\w*/',
+        'nearby_beach'    => '/\b(beaches?|waterfront)\b/',
+        'nearby_park'     => '/\b(parks?|open space)\b/',
+        'nearby_golf'     => '/\b(golf)\b/',
+        'nearby_airport'  => '/\b(airports?)\b/',
+        'nearby_all'      => '/\b(nearby|near (to )?(here|it|this)|close to|walking distance|whats (around|close)|surrounding)\b/',
     ];
 
     /** About the agency itself - true on any page. */
@@ -125,7 +147,7 @@ class QuickAnswers
         }
 
         $property = $this->listingInFocus($conversation);
-        $intents = $this->intents($text, $property !== null);
+        $intents = $this->intents($text, $property);
 
         // Exactly one thing asked, or it is the model's job.
         if (count($intents) !== 1) {
@@ -142,14 +164,29 @@ class QuickAnswers
     }
 
     /** @return list<array{0: string, 1: string}> */
-    private function intents(string $text, bool $onListing): array
+    private function intents(string $text, ?Property $property): array
     {
+        $onListing = $property !== null;
         $found = [];
 
         foreach (self::DEFERRALS as $topic => $pattern) {
-            if (preg_match($pattern, $text)) {
-                $found[] = ['deferral', $topic];
+            if (! preg_match($pattern, $text)) {
+                continue;
             }
+
+            // A recorded fact beats a deferral: if the number is on the record,
+            // quote it instead of promising a call back about it.
+            if ($topic === 'charges' && $property?->service_charge) {
+                $found[] = ['listing', 'service_charge'];
+                continue;
+            }
+
+            if ($topic === 'possession' && filled($property?->handover)) {
+                $found[] = ['listing', 'handover'];
+                continue;
+            }
+
+            $found[] = ['deferral', $topic];
         }
 
         foreach (self::AGENCY as $intent => $pattern) {
@@ -169,7 +206,23 @@ class QuickAnswers
                     $found[] = ['listing', $intent];
                 }
             }
-        } elseif ($this->matchesAny(self::LISTING_FACTS, $text)) {
+
+            $nearby = [];
+
+            foreach (self::NEARBY as $intent => $pattern) {
+                if (preg_match($pattern, $text)) {
+                    $nearby[] = $intent;
+                }
+            }
+
+            if (count($nearby) > 1) {
+                $nearby = array_values(array_filter($nearby, fn($intent) => $intent !== 'nearby_all'));
+            }
+
+            foreach ($nearby as $intent) {
+                $found[] = ['listing', $intent];
+            }
+        } elseif ($this->matchesAny(self::LISTING_FACTS, $text) || $this->matchesAny(self::NEARBY, $text)) {
             return []; // forces the model
         }
 
@@ -203,6 +256,12 @@ class QuickAnswers
 
     private function listingFact(Property $property, string $intent): ?array
     {
+        if (str_starts_with($intent, 'nearby_')) {
+            $nearby = $this->nearby($property, $intent);
+
+            return $nearby === null ? null : $this->reply($nearby, 'listing_' . $intent);
+        }
+
         $text = match ($intent) {
             'price'    => $this->price($property),
             'size'     => $this->size($property),
@@ -215,10 +274,58 @@ class QuickAnswers
             'times'    => filled($property->inspection_times) && $property->status !== 'sold'
                 ? 'Advertised viewing times: ' . $property->inspection_times . '. Want me to pass your details to ' . config('agent.name') . ' to arrange a time?'
                 : null,
+            'view'          => filled($property->view_type) ? 'The view is ' . $property->view_type . '.' : null,
+            'furnishing'    => $property->furnishingLabel() ? 'It is ' . Str::lower($property->furnishingLabel()) . '.' : null,
+            'completion'    => $property->completionLabel()
+                ? 'Completion: ' . $property->completionLabel() . (filled($property->handover) ? ', handover ' . $property->handover : '') . '.'
+                : null,
+            'handover'      => filled($property->handover) ? 'Handover is ' . $property->handover . '.' : null,
+            'service_charge' => $property->serviceChargeDisplay()
+                ? 'The service charge is ' . $property->serviceChargeDisplay() . '.'
+                . (filled($property->payment_terms) ? ' Payment terms as advertised: ' . $property->payment_terms . '.' : '')
+                : null,
+            'permit'        => filled($property->permit_number)
+                ? 'The advertising permit number is ' . $property->permit_number . '.'
+                : null,
         };
 
         // Nothing recorded for it: the model can say so and offer a call back.
         return $text === null ? null : $this->reply($text, 'listing_' . $intent);
+    }
+
+    /**
+     * The landmarks on the record. When the kind asked about is not recorded the
+     * reply says so and offers the call - a distance is never guessed.
+     */
+    private function nearby(Property $property, string $intent): ?string
+    {
+        $type = Str::after($intent, 'nearby_');
+        $groups = $property->nearbyByType();
+
+        if ($type !== 'all') {
+            if (empty($groups[$type])) {
+                return 'That is not recorded for this listing. ' . config('agent.name')
+                    . ' can confirm it - shall I pass your name and number on?';
+            }
+
+            $groups = [$type => $groups[$type]];
+        }
+
+        if (! $groups) {
+            return null;
+        }
+
+        $lines = [];
+
+        foreach ($groups as $kind => $places) {
+            $lines[] = $property->nearbyTypeLabel($kind);
+
+            foreach ($places as $place) {
+                $lines[] = '- ' . $place['name'] . (filled($place['distance'] ?? null) ? ' - ' . $place['distance'] : '');
+            }
+        }
+
+        return ($type === 'all' ? 'What is near the property:' : 'Nearby:') . "\n" . implode("\n", $lines);
     }
 
     private function price(Property $property): string

@@ -19,6 +19,7 @@ class Property extends Model
     {
         return [
             'features'    => 'array',
+            'nearby'      => 'array',
             'sold_at'     => 'date',
             'is_featured' => 'boolean',
             'is_published' => 'boolean',
@@ -230,5 +231,122 @@ class Property extends Model
     public function typeLabel(): string
     {
         return config('agent.property_types.' . $this->type, ucfirst($this->type));
+    }
+
+    /**
+     * Landmarks grouped by kind, in the order the page presents them. Unknown
+     * kinds still render, they just sort after the familiar ones - so a new
+     * landmark type needs no view change to appear.
+     *
+     * @return array<string, list<array{type?: string, name?: string, distance?: string}>>
+     */
+    public function nearbyByType(): array
+    {
+        $groups = [];
+
+        foreach ((array) $this->nearby as $place) {
+            if (filled($place['name'] ?? null)) {
+                $groups[$place['type'] ?? 'other'][] = $place;
+            }
+        }
+
+        $ordered = [];
+
+        foreach (['metro', 'mall', 'school', 'hospital', 'beach', 'park', 'golf', 'airport'] as $type) {
+            if ($groups[$type] ?? null) {
+                $ordered[$type] = $groups[$type];
+                unset($groups[$type]);
+            }
+        }
+
+        return $ordered + $groups;
+    }
+
+    /** The nearest metro, or null - the one landmark buyers screen on first. */
+    public function nearestMetro(): ?array
+    {
+        foreach ((array) $this->nearby as $place) {
+            if (($place['type'] ?? null) === 'metro' && filled($place['name'] ?? null)) {
+                return $place;
+            }
+        }
+
+        return null;
+    }
+
+    public function nearbyTypeLabel(string $type): string
+    {
+        return match ($type) {
+            'metro'    => 'Metro & transport',
+            'mall'     => 'Shopping',
+            'school'   => 'Schools',
+            'hospital' => 'Healthcare',
+            'beach'    => 'Beach',
+            'park'     => 'Parks & open space',
+            'golf'     => 'Golf',
+            'airport'  => 'Airport',
+            default    => ucfirst(str_replace('_', ' ', $type)),
+        };
+    }
+
+    public function furnishingLabel(): ?string
+    {
+        return match ($this->furnishing) {
+            'furnished'      => 'Fully furnished',
+            'semi_furnished' => 'Semi-furnished',
+            'unfurnished'    => 'Unfurnished',
+            default          => filled($this->furnishing) ? ucfirst(str_replace('_', ' ', $this->furnishing)) : null,
+        };
+    }
+
+    public function completionLabel(): ?string
+    {
+        return match ($this->completion) {
+            'ready'    => 'Ready',
+            'off_plan' => 'Off-plan',
+            default    => filled($this->completion) ? ucfirst(str_replace('_', ' ', $this->completion)) : null,
+        };
+    }
+
+    public function ownershipLabel(): ?string
+    {
+        return match ($this->ownership) {
+            'freehold'  => 'Freehold',
+            'leasehold' => 'Leasehold',
+            default     => filled($this->ownership) ? ucfirst($this->ownership) : null,
+        };
+    }
+
+    /** Quoted the way Dubai quotes it: AED per square foot of built-up area, per year. */
+    public function serviceChargeDisplay(): ?string
+    {
+        if (! $this->service_charge) {
+            return null;
+        }
+
+        return config('agent.currency', 'AED') . ' ' . number_format($this->service_charge) . ' per sq ft / year';
+    }
+
+    /**
+     * The listing-details rows, already filtered: anything the owner did not
+     * supply is absent rather than printed as an em dash.
+     *
+     * @return array<string, string>
+     */
+    public function detailRows(): array
+    {
+        $rows = [
+            'Property type' => $this->typeLabel(),
+            'Completion'    => $this->completionLabel(),
+            'Handover'      => $this->handover,
+            'Furnishing'    => $this->furnishingLabel(),
+            'View'          => $this->view_type,
+            'Ownership'     => $this->ownershipLabel(),
+            'Service charge' => $this->serviceChargeDisplay(),
+            'Payment terms' => $this->payment_terms,
+            'Permit number' => $this->permit_number,
+        ];
+
+        return array_filter($rows, fn($value) => filled($value));
     }
 }

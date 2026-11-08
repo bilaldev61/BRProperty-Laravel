@@ -81,6 +81,31 @@
             <h1 class="mt-4 text-3xl sm:text-4xl">{{ $property->title }}</h1>
             <p class="mt-2 text-lg text-ink-500">{{ $property->fullAddress() }}</p>
 
+            @php
+            // The three a buyer asks about before anything else. Everything else -
+            // hospitals, beaches, parks, the airport - is in the full list below.
+            $highlights = collect($property->nearbyByType())
+            ->only(['metro', 'mall', 'school'])
+            ->map(fn ($places, $type) => [$type, $places[0]])
+            ->values();
+            @endphp
+            @if ($highlights->isNotEmpty())
+            <ul class="mt-6 grid gap-3 sm:grid-cols-3">
+                @foreach ($highlights as [$type, $place])
+                <li class="flex items-start gap-3 rounded-2xl border border-ink-100 bg-white px-4 py-3">
+                    <x-feature-icon :name="$type" class="mt-0.5 h-5 w-5 shrink-0 text-brass-500" />
+                    <div>
+                        <p class="text-xs tracking-wide text-ink-400 uppercase">{{ $property->nearbyTypeLabel($type) }}</p>
+                        <p class="mt-0.5 text-[15px] font-medium text-ink-800">{{ $place['name'] }}</p>
+                        @if (filled($place['distance'] ?? null))
+                        <p class="text-sm text-ink-500">{{ $place['distance'] }}</p>
+                        @endif
+                    </div>
+                </li>
+                @endforeach
+            </ul>
+            @endif
+
             @if ($property->status === 'rental')
             <p class="mt-4 font-display text-3xl text-indigo-600">{{ $property->rentDisplay() }}</p>
             @else
@@ -139,6 +164,49 @@
                     </li>
                     @endforeach
                 </ul>
+            </div>
+            @endif
+
+            @if ($details = $property->detailRows())
+            <div class="mt-10">
+                <h2 class="font-sans text-xl font-semibold text-ink-900">Listing details</h2>
+                <dl class="mt-4 grid gap-x-10 gap-y-4 rounded-2xl border border-ink-100 bg-white p-6 sm:grid-cols-2">
+                    @foreach ($details as $label => $value)
+                    <div class="flex items-baseline justify-between gap-6">
+                        <dt class="text-sm text-ink-400">{{ $label }}</dt>
+                        <dd class="text-right text-[15px] font-medium text-ink-800">{{ $value }}</dd>
+                    </div>
+                    @endforeach
+                </dl>
+            </div>
+            @endif
+
+            @if ($nearby = $property->nearbyByType())
+            <div class="mt-10">
+                <h2 class="font-sans text-xl font-semibold text-ink-900">What's nearby</h2>
+                <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                    @foreach ($nearby as $type => $places)
+                    <div class="rounded-2xl border border-ink-100 bg-white p-5">
+                        <p class="flex items-center gap-2 text-xs font-semibold tracking-wide text-ink-400 uppercase">
+                            <x-feature-icon :name="$type" class="h-4 w-4 shrink-0 text-brass-500" />
+                            {{ $property->nearbyTypeLabel($type) }}
+                        </p>
+                        <ul class="mt-3 space-y-2">
+                            @foreach ($places as $place)
+                            <li class="flex items-baseline justify-between gap-4 text-[15px]">
+                                <span class="text-ink-700">{{ $place['name'] }}</span>
+                                @if (filled($place['distance'] ?? null))
+                                <span class="shrink-0 text-sm text-ink-400">{{ $place['distance'] }}</span>
+                                @endif
+                            </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                    @endforeach
+                </div>
+                <p class="mt-3 text-xs text-ink-400">
+                    Distances are approximate - walking time inside the community, driving time beyond it.
+                </p>
             </div>
             @endif
 
