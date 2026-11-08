@@ -12,7 +12,11 @@ $hasAside = isset($aside) && $aside->isNotEmpty();
         <div class="absolute -bottom-44 left-1/3 h-80 w-80 rounded-full bg-indigo-500/20 blur-3xl"></div>
     </div>
 
-    <div @class(['container-page py-14 lg:py-20', 'grid gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center'=> $hasAside])>
+    {{-- items-start, not items-center: the aside often carries a form that is
+         taller than the copy beside it, and centring makes the copy's position
+         depend on the aside's height. Anchoring both columns to the top keeps
+         the heading where it was painted. --}}
+    <div @class(['container-page py-14 lg:py-20', 'grid gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-start'=> $hasAside])>
         <div @class(['max-w-3xl'=> ! $hasAside])>
             @if ($eyebrow)
             <p class="eyebrow text-brass-300">{{ $eyebrow }}</p>
