@@ -202,6 +202,35 @@ return [
         '250000' => 'AED 250K+',
     ],
 
+    /*
+    | How a rental or a purchase actually runs, for "how does renting work?"
+    | questions the assistant answers without the model. Steps only: fees,
+    | deposits and cheque plans vary by landlord and building, so they are left
+    | to the team rather than quoted as if they were fixed.
+    */
+    'process' => [
+        'renting' => [
+            'label' => 'How renting works in Dubai',
+            'steps' => [
+                'Agree the annual rent with the landlord, then agree how many cheques it is split into - the cheque plan is negotiated, not fixed.',
+                'Pay a security deposit, held against the condition of the home and returned when you hand it back.',
+                'Register the tenancy with Ejari and open a DEWA account for utilities.',
+                'Collect the keys and move in.',
+            ],
+            'note' => 'Commission, deposit and cheque plan are confirmed up front for each home - :agent will go through them with you.',
+        ],
+        'buying' => [
+            'label' => 'How buying works in Dubai',
+            'steps' => [
+                'Agree the price and sign the sale agreement, with a deposit held against it.',
+                'The seller applies for the no-objection certificate from the developer or landlord so the sale can transfer.',
+                'The transfer is registered with the Dubai Land Department, which charges a fee based on the price.',
+                'Ownership goes into your name at the Land Department and the title deed is issued.',
+            ],
+            'note' => 'Fees, deposit size and timelines are confirmed for each home - :agent will go through them with you.',
+        ],
+    ],
+
     'seo' => [
         'site_name'   => 'BRProperty',
         'description' => 'BRProperty is a Dubai real estate and consultancy house handling buying, selling, leasing and property management across Downtown Dubai, Business Bay, Dubai Marina, JVC and Dubai Hills. Browse listings, recent sales and request a free valuation.',

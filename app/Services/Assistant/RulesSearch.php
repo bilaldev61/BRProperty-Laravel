@@ -27,6 +27,14 @@ class RulesSearch
     /** Judgement, not a list - "compare with the Marina flat" is not a search. */
     private const NEEDS_JUDGEMENT = '/\b(compare|comparison|compared|better|worse|best|vs|versus|recommend|suggest|should i|why|explain)\b/';
 
+    /** Someone asking how the transaction runs, not what is on the market. */
+    private const PROCESS_ASKS = '/\b(process|procedure|steps?|works?|working|how (do|does|can|to)|what (do|should) i need|requirements?|documents?)\b/';
+
+    /** Spelling drift included - "rennt" is what a hurrying visitor types. */
+    private const RENT_WORDS = '/\bren+t(?:ing|al|s)?\b|\btenan(?:t|cy|cies)\b/';
+
+    private const BUY_WORDS = '/\bbuy(?:ing)?\b|\bpurchas(?:e|ing)\b|\bsell(?:ing)?\b/';
+
     /**
      * Abbreviations visitors type. A matched alias pins the area even with nothing
      * there: "none in that area" is honest, every listing we have is not.
@@ -60,6 +68,10 @@ class RulesSearch
     public function answer(ChatConversation $conversation, string $message): array
     {
         $text = $this->normalise($message);
+
+        if (($steps = $this->process($text)) !== null) {
+            return $this->reply($steps, 'process');
+        }
 
         if (preg_match(self::NEEDS_JUDGEMENT, $text)) {
             return $this->reply($this->guide($conversation), 'guide');
@@ -141,6 +153,33 @@ class RulesSearch
         }
 
         return $criteria;
+    }
+
+    /**
+     * "How does renting work?" - the steps, from config, not a search. A
+     * figure in the message means they are already shopping, so the search
+     * gets it instead.
+     */
+    private function process(string $text): ?string
+    {
+        if (preg_match('/\d/', $text) || ! preg_match(self::PROCESS_ASKS, $text)) {
+            return null;
+        }
+
+        $topic = match (true) {
+            (bool) preg_match(self::RENT_WORDS, $text) => 'renting',
+            (bool) preg_match(self::BUY_WORDS, $text)  => 'buying',
+            default => null,
+        };
+
+        $steps = $topic ? config('agent.process.' . $topic) : null;
+
+        if (! is_array($steps) || empty($steps['steps'])) {
+            return null;
+        }
+
+        return $steps['label'] . ":\n\n- " . implode("\n- ", $steps['steps'])
+            . "\n\n" . str_replace(':agent', config('agent.name'), $steps['note']);
     }
 
     /** Is this actually a request to find a property, rather than small talk? */

@@ -268,4 +268,59 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertStringNotContainsString('I found', $reply);
         $this->assertStringContainsString(config('agent.name'), $reply);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | How the transaction itself works
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_how_renting_works_is_answered_by_rule(): void
+    {
+        $this->withoutModel();
+
+        $reply = $this->ask('how the rent works');
+
+        $this->assertSame('rule:process', $this->lastAnsweredBy());
+        $this->assertStringContainsString('How renting works in Dubai', $reply);
+        $this->assertStringContainsString('Ejari', $reply);
+        $this->assertStringNotContainsString('just tell me the area', $reply);
+    }
+
+    public function test_a_typo_in_rent_still_reaches_the_rental_steps(): void
+    {
+        $this->withoutModel();
+
+        $this->ask('how does the rennt work');
+
+        $this->assertSame('rule:process', $this->lastAnsweredBy());
+    }
+
+    public function test_how_buying_works_names_the_land_department(): void
+    {
+        $this->withoutModel();
+
+        $reply = $this->ask('how does buying work in Dubai?');
+
+        $this->assertSame('rule:process', $this->lastAnsweredBy());
+        $this->assertStringContainsString('Dubai Land Department', $reply);
+    }
+
+    public function test_a_budget_turns_a_rental_question_into_a_search(): void
+    {
+        $this->withoutModel();
+
+        $this->ask('how much to rent a 2 bed in Al Barsha');
+
+        $this->assertStringStartsWith('rule:search', (string) $this->lastAnsweredBy());
+    }
+
+    public function test_a_question_about_a_price_is_still_a_listing_fact(): void
+    {
+        $this->withoutModel();
+
+        $this->ask('how does the price work?', $this->property());
+
+        $this->assertSame('rule:listing_price', $this->lastAnsweredBy());
+    }
 }
