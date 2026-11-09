@@ -151,6 +151,33 @@ class NotificationsTest extends TestCase
             ->assertDontSee('Notifications, 1 waiting');
     }
 
+    public function test_every_row_carries_an_icon_for_its_kind(): void
+    {
+        $this->enquiry('Buyer', ['type' => 'property']);
+        $this->enquiry('Seller', ['type' => 'appraisal']);
+        $this->enquiry('General', ['type' => 'contact']);
+        $this->question('Is the price negotiable?');
+
+        $likes = collect($this->feed(User::factory()->owner()->create())->groups())
+            ->flatMap(fn($group) => $group['items'])
+            ->mapWithKeys(fn($item) => [$item['title'] => $item['icon'] . '/' . $item['tone']]);
+
+        $this->assertSame('house/teal', $likes['Buyer']);
+        $this->assertSame('appraisal/brass', $likes['Seller']);
+        $this->assertSame('envelope/indigo', $likes['General']);
+        $this->assertSame('question/clay', $likes['Is the price negotiable?']);
+    }
+
+    public function test_the_dropdown_draws_the_icons(): void
+    {
+        $this->enquiry('Buyer', ['type' => 'property']);
+
+        $this->actingAs(User::factory()->agent()->create())->get('/admin')
+            ->assertOk()
+            ->assertSee('data-icon="house"', false)
+            ->assertSee('bg-teal-50', false);
+    }
+
     public function test_the_dashboard_no_longer_carries_the_new_property_button(): void
     {
         $owner = User::factory()->owner()->create();

@@ -18,6 +18,13 @@ final class AdminNotifications
 {
     private const SHOWN = 4;
 
+    /** The icon and tone each kind of enquiry carries in the bell. */
+    private const ENQUIRY_LOOKS = [
+        'property'  => ['icon' => 'house', 'tone' => 'teal'],
+        'appraisal' => ['icon' => 'appraisal', 'tone' => 'brass'],
+        'contact'   => ['icon' => 'envelope', 'tone' => 'indigo'],
+    ];
+
     /**
      * @param  list<string>  $except  groups to leave out - the screen being read
      *                                already shows them, and a bell that repeats
@@ -29,7 +36,7 @@ final class AdminNotifications
     ) {}
 
     /**
-     * @return list<array{key: string, label: string, count: int, url: string, items: list<array{title: string, meta: string, url: string, at: ?string}>}>
+     * @return list<array{key: string, label: string, count: int, url: string, items: list<array{title: string, meta: string, url: string, at: ?string, icon: string, tone: string}>}>
      */
     public function groups(): array
     {
@@ -46,6 +53,7 @@ final class AdminNotifications
                     'meta'  => $enquiry->property?->title ?? $enquiry->typeLabel(),
                     'url'   => route('admin.enquiries.show', $enquiry),
                     'at'    => $enquiry->created_at?->diffForHumans(short: true),
+                    ...(self::ENQUIRY_LOOKS[$enquiry->type] ?? self::ENQUIRY_LOOKS['contact']),
                 ],
             );
         }
@@ -61,6 +69,8 @@ final class AdminNotifications
                     'meta'  => $question->topicLabel(),
                     'url'   => route('admin.assistant.questions'),
                     'at'    => $question->created_at?->diffForHumans(short: true),
+                    'icon'  => 'question',
+                    'tone'  => 'clay',
                 ],
             );
         }
@@ -82,8 +92,8 @@ final class AdminNotifications
      * @template TModel of Model
      *
      * @param  Builder<TModel>  $query
-     * @param  callable(TModel): array{title: string, meta: string, url: string, at: ?string}  $line
-     * @return array{key: string, label: string, count: int, url: string, items: list<array{title: string, meta: string, url: string, at: ?string}>}
+     * @param  callable(TModel): array{title: string, meta: string, url: string, at: ?string, icon: string, tone: string}  $line
+     * @return array{key: string, label: string, count: int, url: string, items: list<array{title: string, meta: string, url: string, at: ?string, icon: string, tone: string}>}
      */
     private function group(string $key, string $label, Builder $query, string $url, callable $line): array
     {
