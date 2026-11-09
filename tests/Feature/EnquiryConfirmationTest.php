@@ -20,12 +20,20 @@ class EnquiryConfirmationTest extends TestCase
     private function property(): Property
     {
         return Property::create([
-            'title' => '10 Marla House in DHA Phase 6', 'type' => 'house',
-            'status' => 'for_sale', 'is_published' => true,
-            'address' => 'House 42, Block J', 'suburb' => 'DHA Phase 6',
-            'state' => 'Punjab', 'postcode' => '54000',
-            'price' => 32500000, 'bedrooms' => 4, 'bathrooms' => 3, 'carspaces' => 2,
-            'land_size' => 10, 'inspection_times' => 'Saturday 11am - 1pm',
+            'title' => '10 Marla House in DHA Phase 6',
+            'type' => 'house',
+            'status' => 'for_sale',
+            'is_published' => true,
+            'address' => 'House 42, Block J',
+            'suburb' => 'DHA Phase 6',
+            'state' => 'Punjab',
+            'postcode' => '54000',
+            'price' => 32500000,
+            'bedrooms' => 4,
+            'bathrooms' => 3,
+            'carspaces' => 2,
+            'land_size' => 10,
+            'inspection_times' => 'Saturday 11am - 1pm',
             'description' => 'A corner house.',
         ]);
     }
@@ -33,8 +41,11 @@ class EnquiryConfirmationTest extends TestCase
     private function submit(array $fields = [])
     {
         return $this->postJson('/enquiries', array_merge([
-            'type' => 'contact', 'name' => 'Ayesha Khan', 'email' => 'ayesha@example.com',
-            'phone' => '0300 1234567', 'message' => 'Hello',
+            'type' => 'contact',
+            'name' => 'Ayesha Khan',
+            'email' => 'ayesha@example.com',
+            'phone' => '0300 1234567',
+            'message' => 'Hello',
         ], $fields));
     }
 
@@ -67,7 +78,7 @@ class EnquiryConfirmationTest extends TestCase
 
         $this->submit(['type' => 'appraisal', 'suburb' => 'Wapda Town', 'timeframe' => '1-3 months'])->assertCreated();
 
-        Mail::assertSent(EnquiryReceived::class, fn (EnquiryReceived $mail) => $mail->hasSubject('Your free appraisal request - '.config('agent.agency'))
+        Mail::assertSent(EnquiryReceived::class, fn(EnquiryReceived $mail) => $mail->hasSubject('Your free appraisal request - ' . config('agent.agency'))
             && str_contains($mail->render(), 'Wapda Town')
             && str_contains($mail->render(), '1-3 months'));
     }
@@ -80,7 +91,7 @@ class EnquiryConfirmationTest extends TestCase
         // text would turn the form into a way to mail strangers.
         $this->submit(['message' => 'Visit http://spam.example for cheap pills'])->assertCreated();
 
-        Mail::assertSent(EnquiryReceived::class, fn (EnquiryReceived $mail) => ! str_contains($mail->render(), 'spam.example'));
+        Mail::assertSent(EnquiryReceived::class, fn(EnquiryReceived $mail) => ! str_contains($mail->render(), 'spam.example'));
     }
 
     public function test_one_address_cannot_be_flooded(): void
@@ -137,17 +148,22 @@ class EnquiryConfirmationTest extends TestCase
         $property = $this->property();
 
         $this->app->instance(AiConnector::class, (new FakeAiConnector())->callsTool('save_lead', [
-            'name' => 'Ali Raza', 'phone' => '03001234567', 'email' => 'ali@example.com', 'summary' => 'Wants a call.',
+            'name' => 'Ali Raza',
+            'phone' => '03001234567',
+            'email' => 'ali@example.com',
+            'message' => 'Wants a call.',
         ]));
-        $this->postJson('/assistant', ['message' => 'Call me', 'property' => $property->slug])->assertOk();
+        $this->postJson('/assistant', ['message' => 'Please pass my details to the team for a follow-up', 'property' => $property->slug])->assertOk();
 
-        Mail::assertSent(EnquiryReceived::class, fn ($mail) => $mail->hasTo('ali@example.com'));
+        Mail::assertSent(EnquiryReceived::class, fn($mail) => $mail->hasTo('ali@example.com'));
 
         $this->flushSession();
         $this->app->instance(AiConnector::class, (new FakeAiConnector())->callsTool('save_lead', [
-            'name' => 'Bilal', 'phone' => '03007654321', 'summary' => 'Wants a call.',
+            'name' => 'Bilal',
+            'phone' => '03007654321',
+            'message' => 'Wants a call.',
         ]));
-        $this->postJson('/assistant', ['message' => 'Call me', 'property' => $property->slug])->assertOk();
+        $this->postJson('/assistant', ['message' => 'Please pass my details to the team for a follow-up', 'property' => $property->slug])->assertOk();
 
         Mail::assertSentCount(1);
         $this->assertSame(2, Enquiry::count());

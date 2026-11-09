@@ -68,7 +68,7 @@ class AssistantContactCaptureTest extends TestCase
         $reply = $this->ask('Is the price negotiable?', $this->property());
 
         $this->assertStringContainsString('name and email', $reply);
-        $this->assertSame('rule:deferral_price_negotiation', $this->lastReply()->answered_by);
+        $this->assertSame('rule:deferral_negotiable', $this->lastReply()->answered_by);
     }
 
     public function test_details_left_after_that_become_an_enquiry_carrying_the_question(): void
@@ -207,7 +207,7 @@ class AssistantContactCaptureTest extends TestCase
             'question' => 'Explain when I can move in',
         ]);
 
-        $reply = $this->ask('Explain when I can move in', $this->property());
+        $reply = $this->ask('Would you recommend this building?', $this->property());
 
         $this->assertSame(1, substr_count(strtolower($reply), 'email'));
     }

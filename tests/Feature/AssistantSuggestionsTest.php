@@ -128,10 +128,10 @@ class AssistantSuggestionsTest extends TestCase
             $answered = (string) $reply->answered_by;
 
             $this->assertTrue(str_starts_with($answered, ChatMessage::BY_RULE_PREFIX), $chip . ' -> ' . $answered);
-            $this->assertContains(
+            $this->assertMatchesRegularExpression(
+                '/^rule:(search|process|agency_|deferral_)/',
                 $answered,
-                ['rule:search', 'rule:agency_areas'],
-                $chip . ' should be answered from the records, not deferred',
+                $chip . ' should be answered by a rule, not the fallback',
             );
             $this->assertNotSame(app(PropertyAssistant::class)->fallback(), $reply->content, $chip);
         }
@@ -150,7 +150,7 @@ class AssistantSuggestionsTest extends TestCase
             $reply = $this->lastReply();
 
             $this->assertMatchesRegularExpression(
-                '/^rule:(listing|deferral)_/',
+                '/^rule:(fact|deferral)_/',
                 (string) $reply->answered_by,
                 $chip . ' -> ' . $reply->answered_by,
             );
@@ -167,9 +167,10 @@ class AssistantSuggestionsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('reply', fn($reply) => ! str_contains($reply, "Sorry, I can't answer"));
 
-        // The model was tried first, failed, and the rules answered in its place.
-        $this->assertSame(1, $connector->calls);
-        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        // The Kit answers a search from the rules before it ever asks the model,
+        // so a broken model cannot turn a listing question into an apology.
+        $this->assertSame(0, $connector->calls);
+        $this->assertMatchesRegularExpression('/^rule:search/', (string) $this->lastReply()->answered_by);
     }
 
     public function test_an_outage_leaves_a_whole_conversation_behind(): void

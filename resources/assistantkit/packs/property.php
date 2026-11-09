@@ -60,6 +60,16 @@ return [
      | ready sentence for; `defer` is what to say when it does not.
      */
     'facts' => [
+        // Negotiation and fees come first: "is the price negotiable?" mentions the
+        // price but must never be answered with the advertised figure.
+        'negotiable' => [
+            'match' => '/\b(negotiable|discount|reduce the price|lower the price|best price|deal)\b/i',
+            'defer' => 'whether there is room on the price',
+        ],
+        'fees' => [
+            'match' => '/\b(fees?|commission|service charge|deposit|tax|dld)\b/i',
+            'defer' => 'the exact fees for this one',
+        ],
         'price' => [
             'match' => '/\b(price|cost|how much|asking|rent|rate|aed)\b/i',
             'fact'  => 'price',
@@ -89,14 +99,6 @@ return [
             'match' => '/\b(handover|completion|off[- ]plan|ready now)\b/i',
             'fact'  => 'handover',
             'defer' => 'the handover date',
-        ],
-        'negotiable' => [
-            'match' => '/\b(negotiable|discount|reduce the price|lower the price|best price|deal)\b/i',
-            'defer' => 'whether there is room on the price',
-        ],
-        'fees' => [
-            'match' => '/\b(fees?|commission|service charge|deposit|tax|dld)\b/i',
-            'defer' => 'the exact fees for this one',
         ],
         'parking' => [
             'match' => '/\b(parking|garage|car park)\b/i',

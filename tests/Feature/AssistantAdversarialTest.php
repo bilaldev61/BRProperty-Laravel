@@ -427,9 +427,14 @@ class AssistantAdversarialTest extends TestCase
         ) {
             $this->postJson('/assistant', ['message' => $demand])->assertOk();
 
+            // The Kit may answer some of these from a rule without consulting a
+            // model at all; what matters is that the menu never grows.
             $this->assertSame(
-                ['search_properties', 'get_property', 'save_lead', 'record_unanswered_question'],
-                array_column($fake->tools, 'name'),
+                [],
+                array_diff(
+                    array_column($fake->tools, 'name'),
+                    ['search_items', 'get_item', 'save_lead', 'record_unanswered_question']
+                ),
                 'Injection tried to alter the offered tools.'
             );
         }
@@ -471,7 +476,7 @@ class AssistantAdversarialTest extends TestCase
 
         $this->assertSame(1, ChatConversation::count());
         $this->assertNull(ChatConversation::sole()->property_id);
-        $this->assertStringContainsString('general page', $fake->system);
+        $this->assertStringContainsString((string) config('agent.agency'), $fake->system);
     }
 
     public function test_firing_ssrf_and_metadata_payloads_triggers_no_outbound_request(): void
