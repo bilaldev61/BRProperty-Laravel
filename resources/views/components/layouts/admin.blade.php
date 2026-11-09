@@ -223,6 +223,7 @@ $initials = $me
                     </div>
 
                     <div class="flex shrink-0 items-center gap-2">
+                        <x-admin.notifications />
                         @isset($actions){{ $actions }}@endisset
                     </div>
                 </div>

@@ -21,11 +21,8 @@ $intro = 'Where the work stands on ' . now()->format('l j F')
 @endphp
 
 <x-layouts.admin title="Dashboard" heading="Dashboard" :intro="$intro">
-    <x-slot:actions>
-        @can('properties.manage')
-        <a href="{{ route('admin.properties.create') }}" class="btn-primary !px-4 !py-2 text-xs">+ New property</a>
-        @endcan
-    </x-slot:actions>
+    {{-- No "new property" here: the header belongs to the whole admin, and
+    listings are added from the listings screen. The bell sits in the header. --}}
 
     {{-- Headline figures. One number each, because a tile is a question answered. --}}
     <section aria-label="Key figures" class="grid gap-4 {{ $columns }}">
