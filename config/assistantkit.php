@@ -50,6 +50,19 @@ return [
         'results'            => 6,   // rows listed in a search answer
     ],
 
+    /*
+     | Tools the model may see. null = the pack's list as written; an array can
+     | only narrow it, never widen it, and a name no handler is registered for
+     | is dropped anyway. So an order tool belongs to shops: a property site
+     | that lists nothing about orders can never reach one.
+     */
+    'tools' => null,
+
+    // Who is talking. Tools that read a person's record need this true.
+    'visitor' => [
+        'signed_in' => false,
+    ],
+
     // :agent and :brand are replaced from brand above.
     'asks' => [
         'details' => 'Leave your name and email here and :agent will come back to you.',

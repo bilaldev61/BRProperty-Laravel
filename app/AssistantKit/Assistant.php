@@ -13,6 +13,7 @@ use AssistantKit\Rules\QuickAnswers;
 use AssistantKit\Rules\RulesSearch;
 use AssistantKit\Support\Text;
 use AssistantKit\Tools\ToolBox;
+use AssistantKit\Tools\ToolRegistry;
 use AssistantKit\Value\Conversation;
 use AssistantKit\Value\Reply;
 
@@ -37,6 +38,7 @@ final class Assistant
         private readonly RulesPack $pack,
         private readonly array $config,
         private readonly ?LanguageModel $model = null,
+        private readonly ?ToolRegistry $tools = null,
     ) {
         $this->capture = new ContactCapture($leads, $store, $config);
         $this->quick = new QuickAnswers($pack, $config);
@@ -53,11 +55,12 @@ final class Assistant
         ConversationStore $store,
         LeadSink $leads,
         ?LanguageModel $model = null,
+        ?ToolRegistry $tools = null,
     ): self {
         $config = require rtrim($root, '/\\') . '/config/assistant.php';
         $pack = RulesPack::load(rtrim($root, '/\\') . '/packs/' . ($config['pack'] ?? 'property') . '.php');
 
-        return new self($catalogue, $store, $leads, $pack, $config, $model);
+        return new self($catalogue, $store, $leads, $pack, $config, $model, $tools);
     }
 
     public function reply(string $conversationId, string $message, ?string $itemSlug = null): Reply
@@ -118,7 +121,7 @@ final class Assistant
      */
     private function viaModel(Conversation $conversation, ?array $item, array $facts): ?Reply
     {
-        $tools = new ToolBox($this->catalogue, $this->leads, $this->store, $this->pack, $this->config);
+        $tools = new ToolBox($this->catalogue, $this->leads, $this->store, $this->pack, $this->config, $this->tools);
         $prompt = (new PromptBuilder($this->pack, $this->config))->system($item, $facts);
         $history = (int) ($this->config['limits']['history'] ?? 12);
 

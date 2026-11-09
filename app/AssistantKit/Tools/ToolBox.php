@@ -9,15 +9,23 @@ use AssistantKit\Pack\RulesPack;
 use AssistantKit\Value\Conversation;
 
 /**
- * The model's entire menu. It cannot reach the database, the config or the
- * filesystem - only these four calls, each validated here before it runs.
+ * The model's entire menu: the four built-in calls plus whatever the host site
+ * registered, trimmed to the tools this site's pack declares.
  *
- * `save_lead` and `record_unanswered_question` are the two write tools; pass
- * definitions(readOnly: true) to a non-chat consumer that must not write.
+ * Nothing on this menu is decided by the model. Advertising a tool, running it,
+ * and refusing it all happen here, so a tool the site never declared is not
+ * merely unused - it is absent from the prompt and unwakeable.
  */
 final class ToolBox
 {
+    private const CORE = ['search_items', 'get_item', 'save_lead', 'record_unanswered_question'];
+
     private int $recorded = 0;
+
+    private ToolRegistry $registry;
+
+    /** @var list<string> */
+    private array $menu;
 
     /** @param array<string, mixed> $config */
     public function __construct(
@@ -26,16 +34,123 @@ final class ToolBox
         private readonly ConversationStore $store,
         private readonly RulesPack $pack,
         private readonly array $config,
-    ) {}
+        ?ToolRegistry $tools = null,
+    ) {
+        // Built-ins first: a site cannot shadow one with a looser handler.
+        $this->registry = new ToolRegistry(...$this->builtins());
 
-    /** @return list<array<string, mixed>> */
+        foreach ($tools?->all() ?? [] as $tool) {
+            if (! $this->registry->has($tool->name)) {
+                $this->registry->register($tool);
+            }
+        }
+
+        $this->menu = $this->resolveMenu();
+    }
+
+    /**
+     * The list sent to the model. `$readOnly` keeps the writers out for a
+     * consumer that is drafting text rather than chatting with a visitor.
+     *
+     * @return list<array<string, mixed>>
+     */
     public function definitions(bool $readOnly = false): array
     {
-        $tools = [
-            [
-                'name'        => 'search_items',
-                'description' => 'Find ' . $this->pack->noun('many') . ' that match what the visitor described. Returns the total and up to a handful of matches.',
-                'parameters'  => [
+        $definitions = [];
+
+        foreach ($this->menu as $name) {
+            $tool = $this->registry->get($name);
+
+            if ($tool === null || ! $this->permitted($tool)) {
+                continue;
+            }
+
+            if ($readOnly && $tool->writes) {
+                continue;
+            }
+
+            $definitions[] = $tool->definition();
+        }
+
+        return $definitions;
+    }
+
+    /** @return list<string> */
+    public function menu(): array
+    {
+        return array_values(array_filter($this->menu, fn(string $name): bool => $this->permitted($this->registry->get($name))));
+    }
+
+    /** @param array<string, mixed> $input */
+    public function run(string $name, array $input, Conversation $conversation): mixed
+    {
+        $tool = $this->registry->get($name);
+
+        if ($tool === null) {
+            throw new ToolError('That tool does not exist on this site: ' . $name);
+        }
+
+        if (! in_array($name, $this->menu, true)) {
+            throw new ToolError('That tool is not enabled for this site: ' . $name);
+        }
+
+        if (! $this->permitted($tool)) {
+            throw new ToolError('That tool needs a signed-in visitor.');
+        }
+
+        return $tool->call($input, [
+            'conversation' => $conversation,
+            'visitor'      => (array) ($this->config['visitor'] ?? []),
+        ]);
+    }
+
+    /** True when this turn filed a question, so the reply can be made to offer a way back. */
+    public function recordedUnanswered(): bool
+    {
+        return $this->recorded > 0;
+    }
+
+    /**
+     * The pack says what the trade can do, the site's config may only trim it,
+     * and the registry must actually hold a handler. One intersection, no union.
+     *
+     * @return list<string>
+     */
+    private function resolveMenu(): array
+    {
+        $declared = $this->pack->tools();
+        $override = $this->config['tools'] ?? null;
+
+        $names = is_array($override)
+            ? array_values(array_intersect($declared, array_map('strval', $override)))
+            : $declared;
+
+        // Fail closed: a name with no handler behind it is dropped, not offered.
+        return array_values(array_filter(
+            array_values(array_unique($names)),
+            fn(string $name): bool => $this->registry->has($name),
+        ));
+    }
+
+    private function permitted(?Tool $tool): bool
+    {
+        if ($tool === null) {
+            return false;
+        }
+
+        return ! $tool->requiresAuth || (bool) ($this->config['visitor']['signed_in'] ?? false);
+    }
+
+    /** @return list<Tool> */
+    private function builtins(): array
+    {
+        $nounMany = $this->pack->noun('many');
+
+        return [
+            new Tool(
+                'search_items',
+                'Find ' . $nounMany . ' that match what the visitor described. Returns the total and up to a handful of matches.',
+                [
                     'type'       => 'object',
                     'properties' => [
                         'area'      => ['type' => 'string', 'description' => 'Area or neighbourhood, written as the visitor said it.'],
@@ -47,70 +162,50 @@ final class ToolBox
                     ],
                     'required'   => [],
                 ],
-            ],
-            [
-                'name'        => 'get_item',
-                'description' => 'Read one item in full by its slug.',
-                'parameters'  => [
+                fn(array $input): array => $this->search($input),
+            ),
+            new Tool(
+                'get_item',
+                'Read one item in full by its slug.',
+                [
                     'type'       => 'object',
                     'properties' => [
                         'slug' => ['type' => 'string', 'description' => 'The slug from search_items.'],
                     ],
                     'required'   => ['slug'],
                 ],
-            ],
-        ];
-
-        if ($readOnly) {
-            return $tools;
-        }
-
-        $tools[] = [
-            'name'        => 'save_lead',
-            'description' => 'Save the visitor\'s contact details. Call it once the visitor has given a name and an email, or a phone number.',
-            'parameters'  => [
-                'type'       => 'object',
-                'properties' => [
-                    'name'    => ['type' => 'string'],
-                    'email'   => ['type' => 'string', 'description' => 'Required unless a phone number was given.'],
-                    'phone'   => ['type' => 'string'],
-                    'message' => ['type' => 'string', 'description' => 'What they are asking for, in their own words.'],
+                fn(array $input): array => $this->get($input),
+            ),
+            new Tool(
+                'save_lead',
+                'Save the visitor\'s contact details. Call it once the visitor has given a name and an email, or a phone number.',
+                [
+                    'type'       => 'object',
+                    'properties' => [
+                        'name'    => ['type' => 'string'],
+                        'email'   => ['type' => 'string', 'description' => 'Required unless a phone number was given.'],
+                        'phone'   => ['type' => 'string'],
+                        'message' => ['type' => 'string', 'description' => 'What they are asking for, in their own words.'],
+                    ],
+                    'required'   => [],
                 ],
-                'required'   => [],
-            ],
-        ];
-
-        $tools[] = [
-            'name'        => 'record_unanswered_question',
-            'description' => 'File a question you could not answer, so the team can add it. Always say so to the visitor and ask for their name and email in the same reply.',
-            'parameters'  => [
-                'type'       => 'object',
-                'properties' => [
-                    'question' => ['type' => 'string', 'description' => 'The visitor\'s question, close to their own wording.'],
+                fn(array $input, array $context): array => $this->saveLead($input, $context['conversation']),
+                writes: true,
+            ),
+            new Tool(
+                'record_unanswered_question',
+                'File a question you could not answer, so the team can add it. Always say so to the visitor and ask for their name and email in the same reply.',
+                [
+                    'type'       => 'object',
+                    'properties' => [
+                        'question' => ['type' => 'string', 'description' => 'The visitor\'s question, close to their own wording.'],
+                    ],
+                    'required'   => ['question'],
                 ],
-                'required'   => ['question'],
-            ],
+                fn(array $input, array $context): array => $this->record($input, $context['conversation']),
+                writes: true,
+            ),
         ];
-
-        return $tools;
-    }
-
-    /** @param array<string, mixed> $input */
-    public function run(string $name, array $input, Conversation $conversation): mixed
-    {
-        return match ($name) {
-            'search_items'               => $this->search($input),
-            'get_item'                   => $this->get($input),
-            'save_lead'                  => $this->saveLead($input, $conversation),
-            'record_unanswered_question' => $this->record($input, $conversation),
-            default                      => throw new ToolError('Unknown tool: ' . $name),
-        };
-    }
-
-    /** True when this turn filed a question, so the reply can be made to offer a way back. */
-    public function recordedUnanswered(): bool
-    {
-        return $this->recorded > 0;
     }
 
     /**

@@ -6,6 +6,19 @@
  */
 return [
     'name'  => 'property',
+
+    /*
+     | The tools this trade declares. An allowlist, not a list of exceptions:
+     | an order-status tool added to the engine later is not inherited here,
+     | because this pack never asks for it.
+     */
+    'tools' => [
+        'search_items',
+        'get_item',
+        'save_lead',
+        'record_unanswered_question',
+    ],
+
     'nouns' => [
         'one'   => 'property',
         'many'  => 'properties',

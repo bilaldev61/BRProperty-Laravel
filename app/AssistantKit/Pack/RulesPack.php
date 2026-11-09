@@ -27,6 +27,23 @@ final class RulesPack
         return (string) $this->dot('name', 'default');
     }
 
+    /**
+     * What tools this trade declares. An allowlist: a tool added to the engine
+     * later is not inherited by packs written before it existed.
+     *
+     * @return list<string>
+     */
+    public function tools(): array
+    {
+        $tools = $this->dot('tools', null);
+
+        if (! is_array($tools)) {
+            return ['search_items', 'get_item', 'save_lead', 'record_unanswered_question'];
+        }
+
+        return array_values(array_filter(array_map('strval', $tools), fn(string $name): bool => $name !== ''));
+    }
+
     /** @return list<string> */
     public function areas(): array
     {
