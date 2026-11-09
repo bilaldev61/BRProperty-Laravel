@@ -11,7 +11,7 @@ $tones = ['teal', 'brass', 'indigo', 'clay'];
     <section aria-label="Last 30 days" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ([
         ['Chats', $stats['chats'], 'Visitors who asked at least one question'],
-        ['Leads', $stats['leads'], 'Chats that left a name and number'],
+        ['Leads', $stats['leads'], 'Chats that left contact details'],
         ['Conversion', $stats['conversion'].'%', 'Chats that became a lead'],
         ['Unanswered', $stats['questions'], 'Questions the listings could not answer'],
         ['Answered without AI', $stats['without_ai'].'%', 'Replies built straight from your listing data - free'],

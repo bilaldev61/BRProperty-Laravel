@@ -43,6 +43,14 @@ class AssistantTools
      */
     public function __construct(private readonly ?ChatConversation $conversation = null) {}
 
+    /** Questions filed in this turn, so the reply can be made to offer a way back. */
+    private int $recorded = 0;
+
+    public function recordedUnanswered(): bool
+    {
+        return $this->recorded > 0;
+    }
+
     /** @return list<array{name: string, description: string, inputSchema: array<string, mixed>}> */
     public static function readOnlyDefinitions(): array
     {
@@ -223,9 +231,11 @@ class AssistantTools
                 'question'    => $data['question'],
                 'property_id' => ($this->findProperty($data['property_slug'] ?? null) ?? $this->conversation->property)?->id,
             ]);
+
+            $this->recorded++;
         }
 
-        return 'Noted for the agent. Tell the visitor the agent will confirm this, and offer to take their name and number.';
+        return 'Noted for the agent. Tell the visitor the agent will confirm this, and ask for their name and email so there is somewhere to reply.';
     }
 
     private function findProperty(?string $slug): ?Property

@@ -74,6 +74,13 @@ class PropertyAssistant
           fn(string $name, array $input) => $tools->run($name, $input),
         ));
         [$answeredBy, $tokens] = [ChatMessage::BY_AI, $this->ai->lastTokens()];
+
+        // The model deferred without offering a way to reply. Asking for the
+        // details is the whole point of a deferral, so it is added here rather
+        // than left to the model to remember.
+        if ($tools->recordedUnanswered() && ! $conversation->isLead() && ! $this->asksForDetails($reply)) {
+          $reply .= "\n\nLeave your name and email here and " . config('agent.name') . ' will come back to you.';
+        }
       } catch (AiUnavailable $e) {
         report($e);
 
@@ -96,10 +103,16 @@ class PropertyAssistant
   public function fallback(): string
   {
     return sprintf(
-      "Sorry, I can't answer right now. Please call or WhatsApp %s on %s - or use the enquiry form and you'll get a reply shortly.",
+      "Sorry, I can't answer right now. Please call or WhatsApp %s on %s - or leave your name and email here and they will come back to you.",
       config('agent.name'),
       config('agent.phone'),
     );
+  }
+
+  /** Does this reply already give the visitor a way to be contacted? */
+  private function asksForDetails(string $reply): bool
+  {
+    return (bool) preg_match('/\b(?:e-?mails?|contact you|call you|your (?:name|number|details))\b/i', $reply);
   }
 
   /** Long chats go to a person: they are serious, and they are not free. */
@@ -193,8 +206,12 @@ class PropertyAssistant
         HANDING OVER TO THE TEAM
         - When a visitor shows real interest - wants to visit, make an offer, get a call, or asks something
           only our team can answer - offer to pass their details on.
-        - Ask for their name and phone number (email optional). Call save_lead only once they have typed
-          those details here and are happy to be contacted. Never make up or "complete" their details.
+        - When you cannot answer something, say so plainly and, in that same reply, ask for their name
+          and email. Never end on an apology alone, and never leave them with only a phone number.
+        - The email is what our team replies to: type a name and address in this chat and it reaches the
+          team automatically, so confirm we will be in touch and never ask for the same details twice.
+        - If they offer a phone number instead, call save_lead with their name, number and what they want.
+          Never make up or "complete" their details.
         - They can also reach us directly: call {$phone}, or WhatsApp {$wa}
 
         UNANSWERED QUESTION TOPICS: {$topics}

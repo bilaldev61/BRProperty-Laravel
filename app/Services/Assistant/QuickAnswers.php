@@ -384,7 +384,7 @@ class QuickAnswers
         if ($type !== 'all') {
             if (empty($groups[$type])) {
                 return 'That is not recorded for this listing. ' . config('agent.name')
-                    . ' can confirm it - shall I pass your name and number on?';
+                    . ' can confirm it - shall I pass your name and email on?';
             }
 
             $groups = [$type => $groups[$type]];

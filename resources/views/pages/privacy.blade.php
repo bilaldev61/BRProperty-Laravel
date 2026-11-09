@@ -17,7 +17,7 @@
             </div>
             <div>
                 <h2 class="font-sans text-lg font-semibold text-ink-900">The chat assistant</h2>
-                <p class="mt-2">If you use the chat assistant, what you type is stored with the conversation and sent to {{ config('ai.driver') === 'openrouter' ? 'our AI provider, OpenRouter, and the AI model it routes to,' : 'our AI provider, Anthropic,' }} to generate the replies. Do not share anything sensitive in it. If you choose to leave your name and number, the conversation is attached to your enquiry so {{ config('agent.name') }} can read it. Conversations that do not become an enquiry are deleted after {{ config('ai.chat.retention_days') }} days.</p>
+                <p class="mt-2">If you use the chat assistant, what you type is stored with the conversation and sent to {{ config('ai.driver') === 'openrouter' ? 'our AI provider, OpenRouter, and the AI model it routes to,' : 'our AI provider, Anthropic,' }} to generate the replies. Do not share anything sensitive in it. If you choose to leave your name and email, the conversation is attached to your enquiry so {{ config('agent.name') }} can read it. Conversations that do not become an enquiry are deleted after {{ config('ai.chat.retention_days') }} days.</p>
             </div>
             <div>
                 <h2 class="font-sans text-lg font-semibold text-ink-900">Third-party embeds</h2>
