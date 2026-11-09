@@ -37,7 +37,9 @@ class PropertyAssistant
   /**
    * Save the message, answer it as cheaply as possible, save the reply.
    *
-   * @throws AiUnavailable
+   * A model that cannot be reached is treated exactly like a model that is
+   * switched off: the rules answer instead, so a dead key never turns the chat
+   * into an apology loop.
    */
   public function reply(ChatConversation $conversation, string $message): string
   {
@@ -55,15 +57,22 @@ class PropertyAssistant
       $rules = $this->rules->answer($conversation, $message);
       [$reply, $answeredBy] = [$rules['text'], ChatMessage::BY_RULE_PREFIX . $rules['kind']];
     } else {
-      $tools = new AssistantTools($conversation);
+      try {
+        $tools = new AssistantTools($conversation);
 
-      $reply = trim($this->ai->converse(
-        $this->system($conversation),
-        $this->history($conversation),
-        AssistantTools::definitions(),
-        fn(string $name, array $input) => $tools->run($name, $input),
-      ));
-      [$answeredBy, $tokens] = [ChatMessage::BY_AI, $this->ai->lastTokens()];
+        $reply = trim($this->ai->converse(
+          $this->system($conversation),
+          $this->history($conversation),
+          AssistantTools::definitions(),
+          fn(string $name, array $input) => $tools->run($name, $input),
+        ));
+        [$answeredBy, $tokens] = [ChatMessage::BY_AI, $this->ai->lastTokens()];
+      } catch (AiUnavailable $e) {
+        report($e);
+
+        $rules = $this->rules->answer($conversation, $message);
+        [$reply, $answeredBy] = [$rules['text'], ChatMessage::BY_RULE_PREFIX . $rules['kind']];
+      }
     }
 
     $conversation->messages()->create([

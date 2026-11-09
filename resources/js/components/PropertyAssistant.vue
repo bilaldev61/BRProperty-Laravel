@@ -26,9 +26,9 @@ const messages = ref([]) // { role: 'user' | 'assistant' | 'error', content }
 const scroller = ref(null)
 const input = ref(null)
 
-const suggestions = computed(() => props.property
-    ? ['Is it still available?', "What size is the lot?", 'Can I arrange a showing?', 'Is the price negotiable?']
-    : ['Homes in Steiner Ranch under $750K', 'Condos downtown under $500K', 'What areas do you cover?', '3-bedroom houses for rent'])
+// The server builds these from listings that exist, so every chip can be
+// answered; they arrive with the conversation, when the bubble is opened.
+const suggestions = ref([])
 
 const greeting = computed(() => props.property
     ? `Hi! Ask me anything about ${props.propertyTitle} - size, price, features, or scheduling a showing.`
@@ -53,6 +53,7 @@ async function restore() {
         if (response.ok) {
             const body = await response.json()
             messages.value = body.messages ?? []
+            suggestions.value = body.suggestions ?? []
             lead.value = !!body.lead
         }
     } catch {

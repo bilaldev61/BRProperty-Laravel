@@ -370,16 +370,20 @@ class AssistantTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_an_outage_still_gives_the_visitor_a_way_through(): void
+    public function test_an_outage_answers_from_the_rules_instead_of_apologising(): void
     {
-        $this->fake(FakeAiConnector::failing());
+        $connector = $this->fake(FakeAiConnector::failing());
+        $this->property();
 
         $this->ask('Is it available?')
             ->assertOk()
-            ->assertJsonPath('reply', fn($reply) => str_contains($reply, config('agent.phone')));
+            ->assertJsonPath('reply', fn($reply) => ! str_contains($reply, "Sorry, I can't answer"));
 
-        // Their question is kept for the agent even though nobody answered it.
-        $this->assertSame('Is it available?', ChatMessage::sole()->content);
+        // The model was tried and failed; the rules answered in its place, and
+        // both turns were saved so the transcript stays whole.
+        $this->assertSame(1, $connector->calls);
+        $this->assertSame('rule:search', ChatMessage::where('role', ChatMessage::ASSISTANT)->value('answered_by'));
+        $this->assertSame(2, ChatMessage::count());
     }
 
     public function test_a_long_chat_is_handed_to_the_agent_without_calling_the_model(): void

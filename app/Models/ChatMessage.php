@@ -19,6 +19,7 @@ class ChatMessage extends Model
     /** Who wrote an assistant reply - see the usage migration. */
     public const BY_AI          = 'ai';
     public const BY_LIMIT       = 'limit';
+    public const BY_FALLBACK    = 'fallback';
     public const BY_RULE_PREFIX = 'rule:';
 
     protected $guarded = [];

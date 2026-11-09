@@ -7,6 +7,7 @@ use App\Models\ChatMessage;
 use App\Models\Property;
 use App\Services\Assistant\PropertyAssistant;
 use App\Support\Ai\AiUnavailable;
+use App\Support\AssistantSuggestions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,13 +25,17 @@ class AssistantController extends Controller
     {
         abort_unless($assistant->isAvailable(), 404);
 
-        $conversation = $this->conversation($request, $this->property($request));
+        $property = $this->property($request);
+        $conversation = $this->conversation($request, $property);
 
         return response()->json([
             'messages' => $conversation?->messages
-                ->map(fn (ChatMessage $m) => ['role' => $m->role, 'content' => $m->content])
+                ->map(fn(ChatMessage $m) => ['role' => $m->role, 'content' => $m->content])
                 ->values() ?? [],
             'lead' => (bool) $conversation?->isLead(),
+            // The starter chips travel with the chat, not with the page: they
+            // need the listings table, and the page should not wait on it.
+            'suggestions' => app(AssistantSuggestions::class)->for($property),
         ]);
     }
 
@@ -49,11 +54,17 @@ class AssistantController extends Controller
         try {
             $reply = $assistant->reply($conversation, trim($data['message']));
         } catch (AiUnavailable $e) {
-            // The visitor still gets an answer that moves them forward - the
-            // agent's number - rather than an error in a chat window.
+            // Belt and braces - reply() itself answers from the rules when the
+            // model is down. Whatever is said is saved too, so the visitor's
+            // question is never left hanging in the transcript.
             report($e);
 
-            return response()->json(['reply' => $assistant->fallback(), 'lead' => $conversation->isLead()]);
+            $reply = $assistant->fallback();
+            $conversation->messages()->create([
+                'role'        => ChatMessage::ASSISTANT,
+                'content'     => $reply,
+                'answered_by' => ChatMessage::BY_FALLBACK,
+            ]);
         }
 
         return response()->json(['reply' => $reply, 'lead' => $conversation->refresh()->isLead()]);
@@ -87,6 +98,6 @@ class AssistantController extends Controller
 
     private function sessionKey(?Property $property): string
     {
-        return 'assistant.'.($property?->id ?? 'site');
+        return 'assistant.' . ($property?->id ?? 'site');
     }
 }

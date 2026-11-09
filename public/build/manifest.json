@@ -52,7 +52,7 @@
     "src": "_instrument-serif-400-normal-DnYpCC2O.woff2"
   },
   "resources/css/app.css": {
-    "file": "assets/app-BDu0lwqC.css",
+    "file": "assets/app-C8WKmv9V.css",
     "name": "app",
     "names": [
       "app.css"
@@ -61,7 +61,7 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-CkfEwkcQ.js",
+    "file": "assets/app-CsootBo9.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true
