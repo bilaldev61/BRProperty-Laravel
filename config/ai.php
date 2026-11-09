@@ -92,6 +92,14 @@ return [
         /* Switch the bubble off without removing the key the reply drafts use. */
         'enabled' => (bool) env('AI_CHAT_ENABLED', true),
 
+        /*
+         | On/off for the model layer, without touching the key. False serves
+         | every reply from the rule layers - listing facts, searches - and hands
+         | whatever they cannot answer to the agent's contact details. Useful for
+         | showing what the free path does, and for stopping spend in a hurry.
+         */
+        'model_enabled' => (bool) env('AI_CHAT_MODEL_ENABLED', true),
+
         'model' => env('AI_CHAT_MODEL', 'claude-opus-5-5'),
 
         /*

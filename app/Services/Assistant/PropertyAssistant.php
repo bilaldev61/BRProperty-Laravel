@@ -31,20 +31,25 @@ class PropertyAssistant
   ) {}
 
   /**
-   * The bubble shows whenever chat is switched on. Without an API key it still
-   * runs in rules-only mode: QuickAnswers reply straight from the listing data
-   * for free, and anything that would need the model falls back to the agent's
-   * contact details (see the AiUnavailable handling in AssistantController).
+   * The bubble shows whenever chat is switched on. Without an API key - or with
+   * AI_CHAT_MODEL_ENABLED=false - it still runs in rules-only mode: QuickAnswers
+   * reply straight from the listing data for free, and anything that would need
+   * the model falls back to the agent's contact details (see the AiUnavailable
+   * handling in AssistantController).
    */
   public function isAvailable(): bool
   {
     return (bool) config('ai.chat.enabled');
   }
 
-  /** Whether the model - not just the free rules - can answer. Used for labelling. */
+  /**
+   * Whether the model - not just the free rules - can answer. Used for labelling.
+   * The switch exists so the free path can be demonstrated without editing the
+   * key, and so spend can be stopped without losing the reply drafter.
+   */
   public function modelAvailable(): bool
   {
-    return $this->ai->isConfigured();
+    return (bool) config('ai.chat.model_enabled') && $this->ai->isConfigured();
   }
 
   /**

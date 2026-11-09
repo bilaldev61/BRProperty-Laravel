@@ -172,6 +172,9 @@ stale build.
       in `.env` to switch on the reply drafts and the public chat assistant. Leave
       both blank and neither appears. Keep credit on the OpenRouter key: when it
       runs dry, visitors get your phone number instead of an answer. `AI_CHAT_ENABLED=false` keeps the drafts but hides the assistant;
+      `AI_CHAT_MODEL_ENABLED=false` keeps the assistant but serves every reply from
+      the free rule layers (listing facts, searches) and hands the rest to your
+      phone number — the fastest way to stop spend without removing the key;
       `AI_CHAT_DAILY_LIMIT` caps how many visitor messages it answers per day.
 - [ ] **Email** — create a mailbox in hPanel → Emails (e.g. `noreply@yourdomain.com`),
       then set `MAIL_MAILER=smtp`, `MAIL_HOST=smtp.hostinger.com`, `MAIL_PORT=465`,

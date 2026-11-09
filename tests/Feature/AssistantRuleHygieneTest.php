@@ -249,9 +249,45 @@ class AssistantRuleHygieneTest extends TestCase
 
     public function test_a_plain_single_question_is_still_one_rule_answer(): void
     {
-        $this->ask('How big is it?', $this->property());
+        $reply = $this->ask('How big is it?', $this->property());
 
         $this->assertSame('rule:listing_size', $this->lastAnsweredBy());
         $this->assertSame(1, ChatConversation::count());
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | The model switch
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_the_model_can_be_switched_off_without_touching_the_key(): void
+    {
+        config(['ai.chat.model_enabled' => false]);
+
+        // The connector is configured and idle: the switch must win over it.
+        $reply = $this->ask('Is this a good area for families?', $this->property());
+
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertSame('rule:guide', $this->lastAnsweredBy());
+        $this->assertStringContainsString(config('agent.name'), $reply);
+    }
+
+    public function test_the_rules_still_answer_with_the_model_switched_off(): void
+    {
+        config(['ai.chat.model_enabled' => false]);
+
+        $this->ask('What is the service charge?', $this->property(['service_charge' => 14]));
+
+        $this->assertSame('rule:listing_service_charge', $this->lastAnsweredBy());
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    public function test_the_switch_back_on_returns_the_hard_questions_to_the_model(): void
+    {
+        config(['ai.chat.model_enabled' => true]);
+
+        $this->assertSame('MODEL REPLY', $this->ask('Is this a good area for families?', $this->property()));
+        $this->assertSame(1, $this->ai->calls);
     }
 }
