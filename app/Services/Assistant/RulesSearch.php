@@ -45,6 +45,14 @@ class RulesSearch
     private const GENERIC_AREA_WORDS = ['dubai', 'uae', 'hills', 'estate', 'creek', 'harbour', 'park', 'springs', 'heights', 'gardens', 'greens', 'lake'];
 
     /**
+     * Wording that asks for judgement, not a list. "Compare this with the flat
+     * in Marina" contains an area and a type, so the parser happily finds
+     * apartments in Marina - which answers a question nobody asked. These are
+     * handed to the visitor as a call to the agent instead.
+     */
+    private const NEEDS_JUDGEMENT = '/\b(compare|comparison|compared|better|worse|best|vs|versus|recommend|suggest|should i|why|explain)\b/';
+
+    /**
      * What visitors type, mapped to the suburb names on the listings. Full names
      * are matched first, so "Dubai Marina" never depends on "marina". A matched
      * alias pins the area even when we have nothing there: the honest answer is
@@ -79,6 +87,11 @@ class RulesSearch
     public function answer(ChatConversation $conversation, string $message): array
     {
         $text = $this->normalise($message);
+
+        if (preg_match(self::NEEDS_JUDGEMENT, $text)) {
+            return $this->reply($this->guide($conversation), 'guide');
+        }
+
         $criteria = $this->parse($text);
 
         if (! $this->isSearch($text, $criteria)) {

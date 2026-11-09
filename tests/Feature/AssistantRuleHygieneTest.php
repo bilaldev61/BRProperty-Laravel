@@ -290,4 +290,17 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertSame('MODEL REPLY', $this->ask('Is this a good area for families?', $this->property()));
         $this->assertSame(1, $this->ai->calls);
     }
+
+    public function test_a_comparison_is_not_answered_with_an_unrelated_listing(): void
+    {
+        config(['ai.chat.model_enabled' => false]);
+
+        // "compare... Marina flat" parses as area=Marina, type=apartment, so
+        // without a guard it returned a Marina flat and ignored the comparison.
+        $reply = $this->ask('Compare this with the Marina flat', $this->property());
+
+        $this->assertSame('rule:guide', $this->lastAnsweredBy());
+        $this->assertStringNotContainsString('I found', $reply);
+        $this->assertStringContainsString(config('agent.name'), $reply);
+    }
 }
