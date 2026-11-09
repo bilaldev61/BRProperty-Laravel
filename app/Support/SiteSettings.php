@@ -19,6 +19,22 @@ class SiteSettings
 {
     public const CACHE_KEY = 'site-settings';
 
+    /**
+     * The assistant knobs the settings screen may override.
+     *
+     * Everything else under `ai.` is left alone on purpose: the driver, the
+     * model name and the key are not tuning, and a typo in any of them takes
+     * the assistant offline rather than making it cheaper.
+     */
+    public const ASSISTANT_KEYS = [
+        'ai.chat.history',
+        'ai.chat.max_messages',
+        'ai.chat.retention_days',
+        'ai.chat.daily_limit',
+        'ai.chat.model_enabled',
+        'ai.chat.quick_answers',
+    ];
+
     /** @return array<string, mixed> dot key => value */
     public function all(): array
     {
@@ -40,12 +56,27 @@ class SiteSettings
         }
     }
 
-    /** Merge the stored overrides onto config('agent'). Called from the provider. */
+    /** Merge the stored overrides onto config('agent') and config('ai'). Called from the provider. */
     public function apply(): void
     {
         foreach ($this->all() as $key => $value) {
-            config(['agent.'.$key => $value]);
+            $path = $this->path($key);
+
+            if ($path !== null) {
+                config([$path => $value]);
+            }
         }
+    }
+
+    /** Absolute config path for a stored key, or null when it may not be overridden. */
+    private function path(string $key): ?string
+    {
+        if (str_starts_with($key, 'ai.')) {
+            return in_array($key, self::ASSISTANT_KEYS, true) ? $key : null;
+        }
+
+        // Every other row is an `agent.*` key written without the prefix.
+        return 'agent.' . $key;
     }
 
     /** @param array<string, mixed> $values dot key => value */
@@ -68,9 +99,10 @@ class SiteSettings
     {
         Setting::whereIn('key', $keys)->delete();
 
-        // Reload config from the file so the removed keys revert in this process
-        // too, not only on the next boot.
+        // Reload both files so the removed keys revert in this process too, not
+        // only on the next boot; then re-apply whatever overrides remain.
         config(['agent' => require config_path('agent.php')]);
+        config(['ai' => require config_path('ai.php')]);
 
         $this->refresh();
     }

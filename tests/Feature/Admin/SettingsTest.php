@@ -44,6 +44,7 @@ class SettingsTest extends TestCase
             'branding' => ['branding'],
             'seo' => ['seo'],
             'format' => ['format'],
+            'assistant' => ['assistant'],
         ];
     }
 
@@ -188,5 +189,90 @@ class SettingsTest extends TestCase
         $this->delete('/admin/settings/contact')->assertRedirect(route('admin.login'));
 
         $this->assertSame(0, Setting::count());
+    }
+
+    public function test_assistant_knobs_save_and_apply_to_the_running_config(): void
+    {
+        $this->actingAs($this->agent)->put('/admin/settings/assistant', [
+            'history'        => 6,
+            'max_messages'   => 20,
+            'retention_days' => 30,
+            'daily_limit'    => 200,
+            'model_enabled'  => '1',
+        ])->assertRedirect();
+
+        $this->assertSame(6, config('ai.chat.history'));
+        $this->assertSame(20, config('ai.chat.max_messages'));
+        $this->assertSame(30, config('ai.chat.retention_days'));
+        $this->assertSame(200, config('ai.chat.daily_limit'));
+        $this->assertTrue(config('ai.chat.model_enabled'));
+
+        // An unticked box means off, not "leave as it was".
+        $this->assertFalse(config('ai.chat.quick_answers'));
+    }
+
+    public function test_turning_the_model_off_keeps_the_key_and_serves_rules_only(): void
+    {
+        $this->app->instance(\App\Support\Ai\AiConnector::class, new \Tests\Support\FakeAiConnector());
+
+        $assistant = app(\App\Services\Assistant\PropertyAssistant::class);
+        $this->assertTrue($assistant->modelAvailable());
+
+        $this->actingAs($this->agent)->put('/admin/settings/assistant', [
+            'history'        => 12,
+            'max_messages'   => 30,
+            'retention_days' => 90,
+            'daily_limit'    => 1500,
+            'quick_answers'  => '1',
+        ])->assertRedirect();
+
+        $this->assertFalse($assistant->modelAvailable());
+        $this->assertTrue(app(\App\Support\Ai\AiConnector::class)->isConfigured());
+    }
+
+    public function test_assistant_knobs_are_bounded(): void
+    {
+        $this->actingAs($this->agent)->put('/admin/settings/assistant', [
+            'history'        => 2,
+            'max_messages'   => 500,
+            'retention_days' => 1,
+            'daily_limit'    => 10,
+        ])->assertSessionHasErrors(['history', 'max_messages', 'retention_days', 'daily_limit']);
+
+        $this->assertSame(0, Setting::count());
+    }
+
+    public function test_resetting_the_assistant_section_restores_the_file_defaults(): void
+    {
+        $original = config('ai.chat.history');
+
+        $this->actingAs($this->agent)->put('/admin/settings/assistant', [
+            'history'        => 6,
+            'max_messages'   => 20,
+            'retention_days' => 30,
+            'daily_limit'    => 200,
+        ])->assertRedirect();
+
+        $this->assertSame(6, config('ai.chat.history'));
+
+        $this->actingAs($this->agent)->delete('/admin/settings/assistant')->assertRedirect();
+
+        app(SiteSettings::class)->apply();
+        $this->assertSame($original, config('ai.chat.history'));
+    }
+
+    public function test_the_model_and_driver_cannot_be_overridden_from_the_settings_table(): void
+    {
+        $model = config('ai.chat.model');
+        $driver = config('ai.driver');
+
+        Setting::create(['key' => 'ai.chat.model', 'value' => 'not-a-model']);
+        Setting::create(['key' => 'ai.driver', 'value' => 'nope']);
+        Cache::forget(SiteSettings::CACHE_KEY);
+
+        app(SiteSettings::class)->apply();
+
+        $this->assertSame($model, config('ai.chat.model'));
+        $this->assertSame($driver, config('ai.driver'));
     }
 }

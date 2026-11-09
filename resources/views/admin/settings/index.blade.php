@@ -1,11 +1,12 @@
 @php
 // Colour is the section's identity, so it survives moving between them.
 $tones = [
-'business' => 'teal', 'contact' => 'brass', 'office' => 'indigo',
+'assistant' => 'teal', 'business' => 'teal', 'contact' => 'brass', 'office' => 'indigo',
 'social' => 'clay', 'branding' => 'teal', 'seo' => 'brass', 'format' => 'indigo',
 ];
 
 $notes = [
+'assistant' => 'What the chat bubble may spend, how much of a conversation it remembers, and how long chats are kept.',
 'business' => 'Who you are, and the figures the marketing pages quote as fact.',
 'contact' => 'Where enquiries reach you. Shown on the contact page and in the footer.',
 'office' => 'The visiting address, opening hours and the areas you cover.',
@@ -17,7 +18,7 @@ $notes = [
 @endphp
 
 <x-layouts.admin title="Settings" heading="Site settings"
-    intro="These override the defaults in config/agent.php and take effect across the whole site as soon as you save. Reset a section to fall back to the file.">
+    intro="These override the defaults in the config files and take effect across the whole site as soon as you save. Reset a section to fall back to the file.">
     <x-slot:actions>
         <a href="{{ route('home') }}" target="_blank" rel="noopener"
             class="text-sm font-medium text-ink-500 hover:text-ink-900">Preview site &rarr;</a>

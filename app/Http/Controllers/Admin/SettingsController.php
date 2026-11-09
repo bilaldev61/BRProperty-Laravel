@@ -13,15 +13,34 @@ class SettingsController extends Controller
 {
     /** Section => the config keys it owns. Drives both the form and the reset. */
     private const SECTIONS = [
-        'business' => ['name', 'title', 'agency', 'tagline', 'license', 'bio',
-                       'experience_years', 'properties_sold', 'avg_days_on_market'],
+        'business' => [
+            'name',
+            'title',
+            'agency',
+            'tagline',
+            'license',
+            'bio',
+            'experience_years',
+            'properties_sold',
+            'avg_days_on_market'
+        ],
         'contact'  => ['phone', 'phone_dial', 'office_phone', 'email', 'whatsapp'],
-        'office'   => ['office.street', 'office.suburb', 'office.state', 'office.postcode',
-                       'office.country', 'office.lat', 'office.lng', 'hours', 'service_areas'],
+        'office'   => [
+            'office.street',
+            'office.suburb',
+            'office.state',
+            'office.postcode',
+            'office.country',
+            'office.lat',
+            'office.lng',
+            'hours',
+            'service_areas'
+        ],
         'social'   => ['social.facebook', 'social.instagram', 'social.linkedin', 'social.youtube'],
         'branding' => ['photo', 'avatar', 'logo_mark', 'logo', 'logo_light'],
         'seo'      => ['seo.site_name', 'seo.description', 'seo.keywords', 'seo.locale', 'seo.twitter'],
         'format'   => ['format.price.currency', 'format.price.style', 'format.area.unit'],
+        'assistant' => SiteSettings::ASSISTANT_KEYS,
     ];
 
     public function index(Request $request)
@@ -33,6 +52,7 @@ class SettingsController extends Controller
             'section'  => $section,
             'sections' => $this->sectionLabels(),
             'agent'    => config('agent'),
+            'chat'     => config('ai.chat'),
         ]);
     }
 
@@ -48,16 +68,17 @@ class SettingsController extends Controller
             'branding' => $this->branding($request),
             'seo'      => $this->seo($request),
             'format'   => $this->format($request),
+            'assistant' => $this->assistant($request),
         };
 
         $settings->put($values);
 
         return redirect()
             ->route('admin.settings.index', ['section' => $section])
-            ->with('status', $this->sectionLabels()[$section].' settings saved.');
+            ->with('status', $this->sectionLabels()[$section] . ' settings saved.');
     }
 
-    /** Put a section back to the values in config/agent.php. */
+    /** Put a section back to the values in the config files. */
     public function reset(string $section, SiteSettings $settings)
     {
         abort_unless(array_key_exists($section, self::SECTIONS), 404);
@@ -66,7 +87,7 @@ class SettingsController extends Controller
 
         return redirect()
             ->route('admin.settings.index', ['section' => $section])
-            ->with('status', $this->sectionLabels()[$section].' settings reset to the defaults in config/agent.php.');
+            ->with('status', $this->sectionLabels()[$section] . ' settings reset to the file defaults.');
     }
 
     /* ------------------------------------------------------------------ */
@@ -157,7 +178,7 @@ class SettingsController extends Controller
         ]);
 
         return collect($data)
-            ->mapWithKeys(fn ($v, $k) => ['social.'.$k => $v ?? ''])
+            ->mapWithKeys(fn($v, $k) => ['social.' . $k => $v ?? ''])
             ->all();
     }
 
@@ -173,7 +194,7 @@ class SettingsController extends Controller
 
         foreach (['logo_mark', 'logo', 'logo_light'] as $field) {
             if ($request->hasFile($field)) {
-                $values[$field] = $this->replaceUpload(config('agent.'.$field), $request->file($field));
+                $values[$field] = $this->replaceUpload(config('agent.' . $field), $request->file($field));
             }
         }
 
@@ -190,7 +211,7 @@ class SettingsController extends Controller
             'twitter'     => ['nullable', 'string', 'max:40'],
         ]);
 
-        return collect($data)->mapWithKeys(fn ($v, $k) => ['seo.'.$k => $v ?? ''])->all();
+        return collect($data)->mapWithKeys(fn($v, $k) => ['seo.' . $k => $v ?? ''])->all();
     }
 
     private function format(Request $request): array
@@ -210,6 +231,32 @@ class SettingsController extends Controller
 
     /* ------------------------------------------------------------------ */
 
+    /**
+     * What the assistant may spend and how long it remembers.
+     *
+     * The bounds are the point: history is the main cost of every model call,
+     * and a chat left open for a thousand messages is a database row nobody
+     * will ever read. The model's name is deliberately not editable here.
+     */
+    private function assistant(Request $request): array
+    {
+        $data = $request->validate([
+            'history'        => ['required', 'integer', 'min:4', 'max:24'],
+            'max_messages'   => ['required', 'integer', 'min:5', 'max:100'],
+            'retention_days' => ['required', 'integer', 'min:7', 'max:730'],
+            'daily_limit'    => ['required', 'integer', 'min:50', 'max:100000'],
+        ]);
+
+        return [
+            'ai.chat.history'        => (int) $data['history'],
+            'ai.chat.max_messages'   => (int) $data['max_messages'],
+            'ai.chat.retention_days' => (int) $data['retention_days'],
+            'ai.chat.daily_limit'    => (int) $data['daily_limit'],
+            'ai.chat.model_enabled'  => $request->boolean('model_enabled'),
+            'ai.chat.quick_answers'  => $request->boolean('quick_answers'),
+        ];
+    }
+
     private function replaceUpload(?string $current, $file): string
     {
         if (Media::isUpload($current)) {
@@ -223,9 +270,9 @@ class SettingsController extends Controller
     private function pairs(string $text): array
     {
         return collect(preg_split('/\r\n|\r|\n/', $text))
-            ->map(fn ($line) => array_map('trim', explode('|', $line, 2)))
-            ->filter(fn ($parts) => count($parts) === 2 && $parts[0] !== '')
-            ->mapWithKeys(fn ($parts) => [$parts[0] => $parts[1]])
+            ->map(fn($line) => array_map('trim', explode('|', $line, 2)))
+            ->filter(fn($parts) => count($parts) === 2 && $parts[0] !== '')
+            ->mapWithKeys(fn($parts) => [$parts[0] => $parts[1]])
             ->all();
     }
 
@@ -233,7 +280,7 @@ class SettingsController extends Controller
     private function lines(string $text): array
     {
         return collect(preg_split('/\r\n|\r|\n/', $text))
-            ->map(fn ($l) => trim($l))
+            ->map(fn($l) => trim($l))
             ->filter()
             ->values()
             ->all();
@@ -243,7 +290,7 @@ class SettingsController extends Controller
     private function paragraphs(string $text): array
     {
         return collect(preg_split('/\R\s*\R/', trim($text)))
-            ->map(fn ($p) => trim(preg_replace('/\s*\R\s*/', ' ', $p)))
+            ->map(fn($p) => trim(preg_replace('/\s*\R\s*/', ' ', $p)))
             ->filter()
             ->values()
             ->all();
@@ -259,6 +306,7 @@ class SettingsController extends Controller
             'branding' => 'Branding',
             'seo'      => 'SEO',
             'format'   => 'Currency & units',
+            'assistant' => 'Assistant chat',
         ];
     }
 }
