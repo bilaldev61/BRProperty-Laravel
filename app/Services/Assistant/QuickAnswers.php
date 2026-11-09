@@ -17,10 +17,11 @@ use Illuminate\Support\Str;
  * comparisons, follow-ups, and taking a visitor's details.
  *
  * The rule is to answer only when sure. A message gets an answer here only if
- * it asks exactly one thing this class recognises and carries nothing that
- * needs judgement - contact details, a request to visit, a second question.
- * Anything else returns null and goes to the model, so a rule can never give a
- * half-answer to a two-part question.
+ * every part of it is one this class recognises and none of it needs judgement -
+ * contact details, a request to visit, a comparison. Two or three questions
+ * joined by "and" are answered together, but only when each part stands alone;
+ * otherwise the whole message returns null and goes to the model, so a rule can
+ * never give a half-answer to a two-part question.
  */
 class QuickAnswers
 {
@@ -57,7 +58,7 @@ class QuickAnswers
         'possession'        => '/\b(possession|handover|hand over|closing date|when (can|do) (i|we) (get|move)|qabza)\b/',
         'paperwork'         => '/\b(noc|transfer|registry|mutation|fard|oqood|ejari|documents?|paperwork|file clear|clear title|title (commitment|search|issue|deed)|survey|escrow)\b/',
         'charges'           => '/\b(dues|maintenance charges?|service charges?|taxe?s?|transfer fee|hoa|association fee|charges)\b/',
-        'financing'         => '/\b(installments?|qist|loan|mortgage|pre-?approval|financing|payment plan)\b/',
+        'financing'         => '/\b(installments?|instal+ments?|qist|loan|mortgage|pre-?approval|financing|payment plan)\b/',
     ];
 
     /** What the deferral reply says the agent will confirm. */
@@ -136,7 +137,7 @@ class QuickAnswers
             return $this->reply('I can only help with property questions - our listings, areas, prices and arranging a call with ' . config('agent.name') . '. What are you looking for?', 'off_topic');
         }
 
-        if (mb_strlen($text) > self::MAX_LENGTH || substr_count($message, '?') > 1) {
+        if (mb_strlen($text) > self::MAX_LENGTH) {
             return null;
         }
 
@@ -147,6 +148,14 @@ class QuickAnswers
         }
 
         $property = $this->listingInFocus($conversation);
+
+        // Two or three questions joined by "and" are answered together, but only
+        // when every part stands on its own - a half-answer is worse than none,
+        // because the visitor cannot tell which half went missing.
+        if (($joined = $this->answerEachClause($conversation, $property, $message)) !== null) {
+            return $joined;
+        }
+
         $intents = $this->intents($text, $property);
 
         // Exactly one thing asked, or it is the model's job.
@@ -154,12 +163,109 @@ class QuickAnswers
             return null;
         }
 
-        [$group, $intent] = $intents[0];
+        return $this->resolve($conversation, $intents[0], $property, $message);
+    }
+
+    /**
+     * Each clause of a multi-part message answered in turn, or null when the
+     * message is not really several questions ("service charge and payment
+     * terms" is one), or when any part cannot be answered from the record.
+     */
+    private function answerEachClause(ChatConversation $conversation, ?Property $property, string $message): ?array
+    {
+        $clauses = $this->clauses($message);
+
+        if (count($clauses) < 2) {
+            return null;
+        }
+
+        $intents = [];
+
+        foreach ($clauses as $clause) {
+            $found = $this->intents($this->normalise($clause), $property);
+
+            if (count($found) !== 1) {
+                return null;
+            }
+
+            $intents[] = $found[0];
+        }
+
+        $intents = array_values(array_unique($intents, SORT_REGULAR));
+
+        if (count($intents) < 2) {
+            return null; // the same thing asked twice - one answer is enough
+        }
+
+        $answers = [];
+
+        foreach ($intents as $intent) {
+            $answer = $this->resolve($conversation, $intent, $property, $message);
+
+            if ($answer === null) {
+                return null; // one part unanswerable: hand the whole message on
+            }
+
+            $answers[] = $answer;
+        }
+
+        return $this->join($answers);
+    }
+
+    /**
+     * The message split where a new question starts: a question mark, or an
+     * "and". More than three parts is a conversation, not a lookup.
+     *
+     * @return list<string>
+     */
+    private function clauses(string $message): array
+    {
+        $parts = preg_split('/[?;]+|\s+(?:and|&|plus|also)\s+/iu', $message, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $parts = array_values(array_filter(array_map(fn($part) => trim($part), $parts)));
+
+        return count($parts) > 3 ? [] : $parts;
+    }
+
+    /** @param  list<array{text: string, kind: string}>  $answers */
+    private function join(array $answers): array
+    {
+        if (count($answers) === 1) {
+            return $answers[0];
+        }
+
+        // "What is the price and is it negotiable?" - the price answer already
+        // ends with "can confirm whether there is any room on it", which the
+        // negotiation reply then says again. Say it once.
+        $labels = array_map(fn($answer) => preg_replace('/^(listing|deferral|agency)_/', '', $answer['kind']), $answers);
+
+        if (in_array('price_negotiation', $labels, true)) {
+            $tail = '/\s*' . preg_quote((string) config('agent.name'), '/') . ' can confirm whether there is any room on it\./u';
+
+            foreach ($answers as $index => $answer) {
+                if ($answer['kind'] === 'listing_price') {
+                    $answers[$index]['text'] = trim((string) preg_replace($tail, '', $answer['text']));
+                }
+            }
+        }
+
+        // answered_by is 40 characters, so the joined label has to stay short.
+        $kind = 'multi_' . implode('+', $labels);
+
+        return $this->reply(
+            implode("\n\n", array_column($answers, 'text')),
+            mb_strlen($kind) > 34 ? 'multi' : $kind,
+        );
+    }
+
+    /** @param  array{0: string, 1: string}  $intent */
+    private function resolve(ChatConversation $conversation, array $intent, ?Property $property, string $message): ?array
+    {
+        [$group, $name] = $intent;
 
         return match ($group) {
-            'deferral' => $this->defer($conversation, $intent, $message),
-            'listing'  => $this->listingFact($property, $intent),
-            'agency'   => $this->agencyFact($intent),
+            'deferral' => $this->defer($conversation, $name, $message),
+            'listing'  => $property === null ? null : $this->listingFact($property, $name),
+            'agency'   => $this->agencyFact($name),
         };
     }
 

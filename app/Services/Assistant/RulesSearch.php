@@ -44,6 +44,35 @@ class RulesSearch
      */
     private const GENERIC_AREA_WORDS = ['dubai', 'uae', 'hills', 'estate', 'creek', 'harbour', 'park', 'springs', 'heights', 'gardens', 'greens', 'lake'];
 
+    /**
+     * What visitors type, mapped to the suburb names on the listings. Full names
+     * are matched first, so "Dubai Marina" never depends on "marina". A matched
+     * alias pins the area even when we have nothing there: the honest answer is
+     * "none in that area", never every listing we have.
+     */
+    private const AREA_ALIASES = [
+        'jvc'            => 'Jumeirah Village Circle',
+        'jvt'            => 'Jumeirah Village Triangle',
+        'jlt'            => 'Jumeirah Lake Towers',
+        'marina'         => 'Dubai Marina',
+        'downtown'       => 'Downtown Dubai',
+        'dh'             => 'Dubai Hills Estate',
+        'dubai hills'    => 'Dubai Hills Estate',
+        'palm'           => 'Palm Jumeirah',
+        'bb'             => 'Business Bay',
+        'business bay'   => 'Business Bay',
+        'creek harbour'  => 'Dubai Creek Harbour',
+        'sohba'          => 'Sobha Hartland',
+        'mbc'            => 'Mohammed Bin Rashid City',
+        'mbr city'       => 'Mohammed Bin Rashid City',
+        'barsha'         => 'Al Barsha',
+        'furjan'         => 'Al Furjan',
+        'springs'        => 'The Springs',
+        'meadows'        => 'The Meadows',
+        'ranches'        => 'Arabian Ranches',
+        'arabian ranches' => 'Arabian Ranches',
+    ];
+
     public function __construct(private readonly PropertySearch $search) {}
 
     /** @return array{text: string, kind: string} */
@@ -149,10 +178,20 @@ class RulesSearch
      */
     private function amounts(string $text, int $floor): array
     {
-        $units = ['k' => 1_000, 'thousand' => 1_000, 'm' => 1_000_000, 'million' => 1_000_000];
+        $units = [
+            'k' => 1_000,
+            'thousand' => 1_000,
+            'm' => 1_000_000,
+            'million' => 1_000_000,
+            // Visitors from the subcontinent quote budgets in lakh and crore,
+            // and they expect them read as money, not ignored.
+            'lakh' => 100_000,
+            'lac' => 100_000,
+            'crore' => 10_000_000,
+        ];
         $found = [];
 
-        preg_match_all('/(\d+(?:\.\d+)?)\s*(k|thousand|m|million)?\b/', $text, $matches, PREG_SET_ORDER);
+        preg_match_all('/(\d+(?:\.\d+)?)\s*(k|thousand|m|million|lakh|lac|crore)?\b/', $text, $matches, PREG_SET_ORDER);
 
         foreach ($matches as $m) {
             $number = (float) $m[1];
@@ -183,6 +222,14 @@ class RulesSearch
 
         foreach ($suburbs->sortByDesc(fn($s) => mb_strlen((string) $s)) as $suburb) {
             if (mb_stripos($text, (string) $suburb) !== false) {
+                return $suburb;
+            }
+        }
+
+        // "JVC", "marina", "the palm" - longest alias first so "dubai hills"
+        // wins over "dh".
+        foreach (collect(self::AREA_ALIASES)->sortByDesc(fn($suburb, $alias) => mb_strlen((string) $alias)) as $alias => $suburb) {
+            if (preg_match('/\b' . preg_quote((string) $alias, '/') . '\b/', $text)) {
                 return $suburb;
             }
         }
@@ -311,6 +358,11 @@ class RulesSearch
     private function normalise(string $message): string
     {
         $text = Str::lower(trim($message));
+
+        // "1,500,000" and "8,00,000" are one number each. A comma used as a
+        // separator is followed by a space, so it survives this.
+        $text = preg_replace('/(?<=\d),(?=\d)/', '', $text);
+
         $text = preg_replace('/[^\p{L}\p{N}@.\s-]+/u', ' ', $text);
 
         return trim((string) preg_replace('/\s+/', ' ', $text));

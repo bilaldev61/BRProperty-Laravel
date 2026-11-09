@@ -170,8 +170,8 @@ class AssistantQuickAnswersTest extends TestCase
     public static function modelQuestions(): array
     {
         return [
-            'two questions in one'   => ['What size is it and is the price final?'],
-            'two question marks'     => ['Price? Bedrooms?'],
+            // Two questions in one used to land here. They are answered now,
+            // both halves together - see AssistantRuleHygieneTest.
             'gives a phone number'   => ['Call me on 512 555 0198'],
             'gives an email'         => ['Email me at marcus@example.com'],
             'wants to visit'         => ['Can I visit on Saturday?'],
