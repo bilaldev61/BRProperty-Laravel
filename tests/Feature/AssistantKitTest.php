@@ -130,7 +130,7 @@ class AssistantKitTest extends TestCase
     {
         $this->app->instance(AiConnector::class, new FakeAiConnector('It depends on the building.'));
 
-        $reply = $this->ask('What is the neighbourhood like after dark?');
+        $reply = $this->ask('Is the building quiet at night?');
 
         $this->assertSame('It depends on the building.', $reply);
         $this->assertSame(ChatMessage::BY_AI, $this->lastReply()->answered_by);

@@ -49,17 +49,17 @@ final class ContactCapture
         return new Reply($this->thanks($name, $email), 'lead');
     }
 
-    /** "My name is Sara" / "this is Sara" / otherwise the email local part. */
+    /** "My name is Sara Ali" / "Ahmed Khan, ..." / otherwise the email local part. */
     private function name(string $message, string $email): ?string
     {
         $patterns = [
-            '/\b(?:my name is|i am|i\'m|this is|name[:\s]+)\s*([\p{L}][\p{L}\'-]{1,30})/iu',
-            '/^\s*([\p{L}][\p{L}\'-]{1,30})\s*(?:,|here)/iu',
+            '/\b(?:my name is|i am|i\'m|this is|name[:\s]+)\s*([\p{L}][\p{L}\'-]*(?:\s+[\p{L}][\p{L}\'-]*){0,2})/iu',
+            '/^\s*([\p{L}][\p{L}\'-]*(?:\s+[\p{L}][\p{L}\'-]*){0,2})\s*(?:,|here)/iu',
         ];
 
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, trim($message), $match) === 1) {
-                return Text::sentence(mb_strtolower($match[1]));
+                return $this->title($match[1]);
             }
         }
 
@@ -67,7 +67,13 @@ final class ContactCapture
         $local = is_string($local) ? preg_replace('/[^a-z]+/i', ' ', $local) : null;
         $local = is_string($local) ? trim($local) : '';
 
-        return $local !== '' ? Text::sentence(mb_strtolower($local)) : null;
+        return $local !== '' ? $this->title($local) : null;
+    }
+
+    /** A person's name is written in title case, not as a sentence. */
+    private function title(string $value): string
+    {
+        return trim(mb_convert_case(trim($value), MB_CASE_TITLE, 'UTF-8'));
     }
 
     private function phone(string $message): ?string

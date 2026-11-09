@@ -45,6 +45,12 @@ final class RulesSearch
         $total = (int) ($result['total'] ?? 0);
 
         if ($total === 0) {
+            // Nothing was actually filtered out, so the message was not a search:
+            // let the model or the team answer instead of "nothing matching".
+            if ($criteria === []) {
+                return null;
+            }
+
             return new Reply($this->none($conversation, $criteria), 'rule:search_none');
         }
 
@@ -152,17 +158,8 @@ final class RulesSearch
             }
         }
 
-        $pattern = $this->pack->dot('criteria.area');
-
-        if (is_string($pattern) && preg_match($pattern, $text, $match) === 1) {
-            $candidate = preg_split('/\b(for|with|under|over|budget|and|that|which|please)\b/', $match[2])[0] ?? '';
-            $candidate = trim((string) $candidate);
-
-            if (mb_strlen($candidate) >= 3) {
-                return Text::sentence($candidate);
-            }
-        }
-
+        // An unknown place is not a criterion: "at night", "in writing" and
+        // "in terms of" all look like an area to a regex, and none of them are.
         return null;
     }
 
