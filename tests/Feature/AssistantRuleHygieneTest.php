@@ -12,9 +12,7 @@ use Tests\Support\FakeAiConnector;
 use Tests\TestCase;
 
 /**
- * Rule hygiene: the four ways the free layers used to answer wrongly or not at
- * all - a British spelling nobody typed, a two-part question answered by one
- * half, a price written with commas, and a suburb typed as an abbreviation.
+ * The free layers: spellings, two-part questions, prices and abbreviations.
  */
 class AssistantRuleHygieneTest extends TestCase
 {
@@ -70,11 +68,6 @@ class AssistantRuleHygieneTest extends TestCase
         $this->app->instance(AiConnector::class, FakeAiConnector::unconfigured());
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 1. Both spellings of "instalment"
-    |--------------------------------------------------------------------------
-    */
 
     /** @return array<string, array{0: string}> */
     public static function instalmentQuestions(): array
@@ -95,11 +88,6 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertSame('rule:deferral_financing', $this->lastAnsweredBy());
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 2. A two-part question gets both answers, or neither
-    |--------------------------------------------------------------------------
-    */
 
     public function test_a_two_part_question_is_answered_in_full_not_half(): void
     {
@@ -111,8 +99,7 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertStringContainsString('will confirm whether there is room on the price', $reply);
         $this->assertStringStartsWith('rule:multi_', $this->lastAnsweredBy());
 
-        // The price answer's own "can confirm whether there is any room on it"
-        // is the same sentence again - it must not be said twice.
+        // The price answer already says it - it must not be said twice.
         $this->assertSame(1, substr_count($reply, 'room on'));
     }
 
@@ -169,11 +156,6 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertSame('MODEL REPLY', $reply);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 3. Numbers written the way people write them
-    |--------------------------------------------------------------------------
-    */
 
     public function test_a_price_with_thousands_separators_is_one_number(): void
     {
@@ -201,11 +183,6 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertStringContainsString($cheap->title, $reply);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 4. Suburbs typed as everybody types them
-    |--------------------------------------------------------------------------
-    */
 
     public function test_a_suburb_abbreviation_pins_the_search(): void
     {
@@ -227,18 +204,12 @@ class AssistantRuleHygieneTest extends TestCase
 
         $this->property(['title' => 'Villa in the circle', 'suburb' => 'Jumeirah Village Circle']);
 
-        // "JVT" maps to a suburb with no listings, so the search must not
-        // silently widen to everything - it looks for JVT and finds nothing.
+        // "JVT" has no listings; the search must not widen to everything.
         $reply = $this->ask('2 bed in JVT');
 
         $this->assertStringContainsString('I do not have any listings', $reply);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Unchanged guarantees
-    |--------------------------------------------------------------------------
-    */
 
     public function test_a_comparison_still_belongs_to_the_model(): void
     {
@@ -255,17 +226,12 @@ class AssistantRuleHygieneTest extends TestCase
         $this->assertSame(1, ChatConversation::count());
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | The model switch
-    |--------------------------------------------------------------------------
-    */
 
     public function test_the_model_can_be_switched_off_without_touching_the_key(): void
     {
         config(['ai.chat.model_enabled' => false]);
 
-        // The connector is configured and idle: the switch must win over it.
+        // Configured connector, idle: the switch must win over it.
         $reply = $this->ask('Is this a good area for families?', $this->property());
 
         $this->assertSame(0, $this->ai->calls);
@@ -295,8 +261,7 @@ class AssistantRuleHygieneTest extends TestCase
     {
         config(['ai.chat.model_enabled' => false]);
 
-        // "compare... Marina flat" parses as area=Marina, type=apartment, so
-        // without a guard it returned a Marina flat and ignored the comparison.
+        // Parses as area=Marina + type=flat, which ignores the comparison.
         $reply = $this->ask('Compare this with the Marina flat', $this->property());
 
         $this->assertSame('rule:guide', $this->lastAnsweredBy());

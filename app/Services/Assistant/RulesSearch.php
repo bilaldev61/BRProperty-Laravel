@@ -9,54 +9,27 @@ use App\Support\Format;
 use Illuminate\Support\Str;
 
 /**
- * The free, no-model search the chat falls back to when there is no API key.
- *
- * QuickAnswers deliberately hands every browse question ("4-bedroom villas in
- * Dubai Hills under AED 8M", "apartments downtown", "villas to rent") to the model -
- * they need reading into criteria and running against the listings. With no key
- * that hand-off has nowhere to go, so those questions used to dead-end at
- * "Sorry, I can't answer" - including the assistant's own suggestion chips.
- *
- * This closes that gap without a model: it reads the obvious criteria out of the
- * message, runs the same PropertySearch the model's tool uses, and lists what
- * comes back straight from the database. It only ever reads published listings,
- * and when the message is not a search at all it points the visitor forwards
- * instead of guessing. Adding an API key upgrades the whole thing to the model -
- * this path simply stops being reached.
+ * The free, no-model fallback for browse questions ("4-bed villas in Dubai
+ * Hills under AED 8M"). Reads the criteria, runs PropertySearch, lists what
+ * comes back. Not a search: point the visitor forward instead of guessing.
  */
 class RulesSearch
 {
     /** Enough to choose from in a chat window; more is a list, not an answer. */
     private const SHOW_LIMIT = 3;
 
-    /**
-     * A figure above this is not a price - it is a bot testing the parser, or a
-     * fat-fingered number. Capping here keeps a huge run of digits from
-     * overflowing the int cast when we scale by a unit like "m"/"million".
-     */
+    /** Above this a "price" is a typo or a probe; the cap stops the int cast overflowing. */
     private const MAX_MONEY = 1.0e13;
 
-    /**
-     * Words that name a place too loosely to pin one suburb on their own - they
-     * belong to several areas, or mean the whole city, or are too generic to
-     * narrow anything ("hills" is in half our areas), so matching on them would
-     * over-filter the results.
-     */
+    /** Too generic to pin one suburb on ("hills" is in half our areas). */
     private const GENERIC_AREA_WORDS = ['dubai', 'uae', 'hills', 'estate', 'creek', 'harbour', 'park', 'springs', 'heights', 'gardens', 'greens', 'lake'];
 
-    /**
-     * Wording that asks for judgement, not a list. "Compare this with the flat
-     * in Marina" contains an area and a type, so the parser happily finds
-     * apartments in Marina - which answers a question nobody asked. These are
-     * handed to the visitor as a call to the agent instead.
-     */
+    /** Judgement, not a list - "compare with the Marina flat" is not a search. */
     private const NEEDS_JUDGEMENT = '/\b(compare|comparison|compared|better|worse|best|vs|versus|recommend|suggest|should i|why|explain)\b/';
 
     /**
-     * What visitors type, mapped to the suburb names on the listings. Full names
-     * are matched first, so "Dubai Marina" never depends on "marina". A matched
-     * alias pins the area even when we have nothing there: the honest answer is
-     * "none in that area", never every listing we have.
+     * Abbreviations visitors type. A matched alias pins the area even with nothing
+     * there: "none in that area" is honest, every listing we have is not.
      */
     private const AREA_ALIASES = [
         'jvc'            => 'Jumeirah Village Circle',
@@ -107,11 +80,10 @@ class RulesSearch
     }
 
     /**
-     * Read the criteria a visitor states in plain words. Deliberately conservative:
-     * a field is only set when the message clearly says it, so a wrong guess never
-     * filters listings out that the visitor would have wanted to see.
+     * Read the stated criteria - conservative, so a wrong guess never filters out
+     * listings the visitor wanted.
      *
-     * @return array<string, mixed> criteria in the shape PropertySearch expects
+     * @return array<string, mixed>
      */
     private function parse(string $text): array
     {
@@ -143,8 +115,7 @@ class RulesSearch
 
         $isRent = (bool) ($criteria['rent'] ?? false);
 
-        // Rent is a few hundred to a few thousand a month; a sale figure is
-        // tens of thousands up. The floor keeps "3 bedrooms" from reading as $3.
+        // Rent is hundreds a month, a sale tens of thousands; the floor keeps "3 bed" from reading as money.
         $amounts = $this->amounts($text, $isRent ? 200 : 10_000);
 
         if (count($amounts) >= 2) {
@@ -183,8 +154,7 @@ class RulesSearch
     }
 
     /**
-     * Money amounts in the text, scaled by their unit. A bare number below the
-     * floor is not money ("2 bedrooms", "18 days"), so those are ignored.
+     * Money amounts, scaled by unit. A bare figure below the floor is not money.
      *
      * @param  int  $floor  smallest unit-less figure to treat as a price
      * @return list<int>
@@ -196,8 +166,7 @@ class RulesSearch
             'thousand' => 1_000,
             'm' => 1_000_000,
             'million' => 1_000_000,
-            // Visitors from the subcontinent quote budgets in lakh and crore,
-            // and they expect them read as money, not ignored.
+            // Lakh and crore are budgets, not noise.
             'lakh' => 100_000,
             'lac' => 100_000,
             'crore' => 10_000_000,
@@ -211,8 +180,7 @@ class RulesSearch
             $unit = $m[2] ?? '';
             $value = $unit !== '' ? $number * $units[$unit] : $number;
 
-            // Ignore figures that are not real money - too small to be a price,
-            // or so large they would overflow the int cast below.
+            // Skip figures too small to be money or too large for the int cast.
             if ($value > self::MAX_MONEY || ($unit === '' && $value < $floor)) {
                 continue;
             }
@@ -224,10 +192,8 @@ class RulesSearch
     }
 
     /**
-     * Which suburb the visitor means, matched against the suburbs that actually
-     * have listings so the answer can never point at an area we do not work in.
-     * Prefers a full name ("Dubai Marina"); falls back to a distinctive single word
-     * ("downtown" for "Downtown Dubai") only when that word belongs to one suburb.
+     * The suburb meant, matched against suburbs that have listings. Full name
+     * first, then a word distinctive to exactly one suburb.
      */
     private function matchingArea(string $text): ?string
     {
@@ -247,8 +213,7 @@ class RulesSearch
             }
         }
 
-        // Unique, distinctive words: "Downtown" -> only "Downtown Dubai" has it.
-        // Generic words are skipped so "Dubai" never pins a single suburb.
+        // Distinctive words only, so "Dubai" never pins a suburb.
         $byWord = [];
         foreach ($suburbs as $suburb) {
             foreach (preg_split('/\s+/', (string) $suburb) as $word) {
@@ -372,8 +337,7 @@ class RulesSearch
     {
         $text = Str::lower(trim($message));
 
-        // "1,500,000" and "8,00,000" are one number each. A comma used as a
-        // separator is followed by a space, so it survives this.
+        // "1,500,000" is one number; a comma used as a separator has a space after it.
         $text = preg_replace('/(?<=\d),(?=\d)/', '', $text);
 
         $text = preg_replace('/[^\p{L}\p{N}@.\s-]+/u', ' ', $text);

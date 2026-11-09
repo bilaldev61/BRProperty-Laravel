@@ -8,20 +8,9 @@ use App\Models\Property;
 use Illuminate\Support\Str;
 
 /**
- * Answers the questions that do not need a model, straight from the database.
- *
- * Most chat traffic is the same dozen questions - how much, how big, is it
- * still available, what are your hours - and every one of those is a column
- * we already have. Answering them here is instant, free, and exactly right
- * every time. The model is kept for what actually needs it: searches,
- * comparisons, follow-ups, and taking a visitor's details.
- *
- * The rule is to answer only when sure. A message gets an answer here only if
- * every part of it is one this class recognises and none of it needs judgement -
- * contact details, a request to visit, a comparison. Two or three questions
- * joined by "and" are answered together, but only when each part stands alone;
- * otherwise the whole message returns null and goes to the model, so a rule can
- * never give a half-answer to a two-part question.
+ * Answers from the records what a regex can answer exactly; everything needing
+ * judgement goes to the model. A message is answered only when every part of it
+ * is recognised, so a rule never half-answers a two-part question.
  */
 class QuickAnswers
 {
@@ -31,14 +20,10 @@ class QuickAnswers
     /** Whole-message small talk. */
     private const GREETING = '/^(hi+|hello|hey|salam|salaam|assalam ?o? ?alaikum|aoa|good (morning|afternoon|evening))$/';
 
-    // Not "ok" or "yes" on their own: after "shall I pass your details on?"
-    // those are an answer, and the model needs to see it.
+    // Not a bare "ok": after "shall I pass your details on?" that is an answer.
     private const THANKS = '/^(ok(ay)? thanks?|thanks?( you)?( so much)?|thx|shukriya|jazak ?allah|bye|goodbye|allah hafiz)$/';
 
-    /**
-     * Signals that the model has to handle the message, whatever else it says:
-     * contact details (save_lead), visits and offers, and open-ended asks.
-     */
+    /** Patterns that force the whole message to the model. */
     private const NEEDS_MODEL = [
         '/\d[\d\s-]{6,}\d/',                         // a phone number
         '/\S+@\S+\.\S+/',                            // an email address
@@ -86,10 +71,8 @@ class QuickAnswers
     ];
 
     /**
-     * "Is there a metro nearby?" is one question about one kind of landmark.
-     * Specific kinds are matched before the catch-all, and when both fire the
-     * catch-all is dropped - otherwise "metro nearby" would read as two
-     * questions and be handed to the model for nothing.
+     * Specific landmark kinds are matched before the catch-all, which is dropped
+     * when both fire - otherwise "metro nearby" reads as two questions.
      */
     private const NEARBY = [
         'nearby_metro'    => '/\b(metro|monorail|train|public transport)\b/',
@@ -149,9 +132,7 @@ class QuickAnswers
 
         $property = $this->listingInFocus($conversation);
 
-        // Two or three questions joined by "and" are answered together, but only
-        // when every part stands on its own - a half-answer is worse than none,
-        // because the visitor cannot tell which half went missing.
+        // Compound messages are answered together only when every part stands alone.
         if (($joined = $this->answerEachClause($conversation, $property, $message)) !== null) {
             return $joined;
         }
@@ -167,9 +148,7 @@ class QuickAnswers
     }
 
     /**
-     * Each clause of a multi-part message answered in turn, or null when the
-     * message is not really several questions ("service charge and payment
-     * terms" is one), or when any part cannot be answered from the record.
+     * Each clause answered in turn, or null when any part is unanswerable.
      */
     private function answerEachClause(ChatConversation $conversation, ?Property $property, string $message): ?array
     {
@@ -213,8 +192,7 @@ class QuickAnswers
     }
 
     /**
-     * The message split where a new question starts: a question mark, or an
-     * "and". More than three parts is a conversation, not a lookup.
+     * Split where a new question starts - a question mark or an "and".
      *
      * @return list<string>
      */
@@ -233,9 +211,8 @@ class QuickAnswers
             return $answers[0];
         }
 
-        // "What is the price and is it negotiable?" - the price answer already
-        // ends with "can confirm whether there is any room on it", which the
-        // negotiation reply then says again. Say it once.
+        // The price answer already ends with "...room on it", which the
+        // negotiation reply repeats. Say it once.
         $labels = array_map(fn($answer) => preg_replace('/^(listing|deferral|agency)_/', '', $answer['kind']), $answers);
 
         if (in_array('price_negotiation', $labels, true)) {
@@ -280,8 +257,7 @@ class QuickAnswers
                 continue;
             }
 
-            // A recorded fact beats a deferral: if the number is on the record,
-            // quote it instead of promising a call back about it.
+            // A recorded fact beats a deferral - quote it rather than promise a call.
             if ($topic === 'charges' && $property?->service_charge) {
                 $found[] = ['listing', 'service_charge'];
                 continue;
@@ -304,8 +280,7 @@ class QuickAnswers
         // "Is the price final?" is about negotiation, not the price itself.
         $negotiating = in_array(['deferral', 'price_negotiation'], $found, true);
 
-        // A listing fact only means something on that listing's page; elsewhere
-        // "how much?" needs the model to work out which property is meant.
+        // A listing fact needs that listing page; elsewhere "how much?" needs the model.
         if ($onListing) {
             foreach (self::LISTING_FACTS as $intent => $pattern) {
                 if (preg_match($pattern, $text) && ! ($intent === 'price' && $negotiating)) {
@@ -336,9 +311,8 @@ class QuickAnswers
     }
 
     /**
-     * The listing a bare "how big is it?" refers to - the page's own, unless the
-     * model has since pointed the visitor at another one. Then "it" is
-     * ambiguous and the model, which can read the chat, has to answer.
+     * The listing a bare "how big is it?" refers to - ambiguous once the model has
+     * pointed at another one, so it then goes to the model.
      */
     private function listingInFocus(ChatConversation $conversation): ?Property
     {
@@ -400,8 +374,7 @@ class QuickAnswers
     }
 
     /**
-     * The landmarks on the record. When the kind asked about is not recorded the
-     * reply says so and offers the call - a distance is never guessed.
+     * Landmarks on the record; a missing kind is said out loud - never guessed.
      */
     private function nearby(Property $property, string $intent): ?string
     {
@@ -494,8 +467,7 @@ class QuickAnswers
     }
 
     /**
-     * Something only the agent can answer. Saying so needs no model - and
-     * logging it here is more reliable than asking a model to remember to.
+     * Something only the agent can answer - logged so the question is not lost.
      */
     private function defer(ChatConversation $conversation, string $topic, string $message): array
     {

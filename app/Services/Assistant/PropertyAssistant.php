@@ -11,16 +11,8 @@ use App\Support\Ai\AiUnavailable;
 use App\Support\PropertyFacts;
 
 /**
- * The chat bubble on the public site: answers visitors' questions about the
- * agency's listings, and hands the serious ones to the agent.
- *
- * It follows the same rule as the reply drafter, for the same reason: the model
- * may only state facts this application gives it - in the prompt or through a
- * tool - and must defer everything else to the agent. In this market a
- * confident guess about possession or transfer status loses a client.
- *
- * Its job is not to replace the agent but to catch the visitor at 11pm, answer
- * what the records can answer, and leave a lead in the inbox for the morning.
+ * The public chat bubble. Answers from the listing records and hands the rest
+ * to the agent - the model may only state facts this app gives it.
  */
 class PropertyAssistant
 {
@@ -30,34 +22,20 @@ class PropertyAssistant
     private readonly RulesSearch $rules,
   ) {}
 
-  /**
-   * The bubble shows whenever chat is switched on. Without an API key - or with
-   * AI_CHAT_MODEL_ENABLED=false - it still runs in rules-only mode: QuickAnswers
-   * reply straight from the listing data for free, and anything that would need
-   * the model falls back to the agent's contact details (see the AiUnavailable
-   * handling in AssistantController).
-   */
+  /** On when the bubble is enabled; rules-only counts as on. */
   public function isAvailable(): bool
   {
     return (bool) config('ai.chat.enabled');
   }
 
-  /**
-   * Whether the model - not just the free rules - can answer. Used for labelling.
-   * The switch exists so the free path can be demonstrated without editing the
-   * key, and so spend can be stopped without losing the reply drafter.
-   */
+  /** Whether the model, not just the free rules, can answer. */
   public function modelAvailable(): bool
   {
     return (bool) config('ai.chat.model_enabled') && $this->ai->isConfigured();
   }
 
   /**
-   * Record what the visitor said, get the reply, record that too.
-   *
-   * The cheapest answer wins: the message cap, then a reply straight from
-   * the database, and only then the model. The visitor's message is saved
-   * before any of that, so an outage still leaves it for the agent.
+   * Save the message, answer it as cheaply as possible, save the reply.
    *
    * @throws AiUnavailable
    */
@@ -73,8 +51,7 @@ class PropertyAssistant
     } elseif ($quick = $this->quick->answer($conversation, $message)) {
       [$reply, $answeredBy] = [$quick['text'], ChatMessage::BY_RULE_PREFIX . $quick['kind']];
     } elseif (! $this->modelAvailable()) {
-      // No key: run the search straight from the database rather than dead-
-      // ending at the model, so browse questions still return real listings.
+      // No model: search the database rather than dead-ending at the model.
       $rules = $this->rules->answer($conversation, $message);
       [$reply, $answeredBy] = [$rules['text'], ChatMessage::BY_RULE_PREFIX . $rules['kind']];
     } else {
@@ -120,11 +97,7 @@ class PropertyAssistant
   }
 
   /**
-   * The recent conversation, as plain text turns.
-   *
-   * Only what the visitor saw is resent - tool calls from earlier turns are
-   * not, and neither is the model's reasoning. Earlier answers already carry
-   * whatever those tools found.
+   * Recent turns as plain text; earlier tool calls are not resent.
    *
    * @return list<array{role: string, content: string}>
    */

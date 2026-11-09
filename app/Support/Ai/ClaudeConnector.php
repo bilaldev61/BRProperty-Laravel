@@ -8,11 +8,9 @@ use Closure;
 use Throwable;
 
 /**
- * The real connector: one call to Claude, one string back.
- *
- * Every failure - no credentials, a network problem, a rate limit, a refusal,
- * an empty body - leaves here as AiUnavailable, so callers have exactly one
- * thing to catch and the agent always falls back to writing it themselves.
+ * The real connector. Every failure - no credentials, network, rate limit,
+ * refusal, empty body - leaves as AiUnavailable, so callers have one thing to
+ * catch and the agent always falls back to writing it themselves.
  */
 class ClaudeConnector implements AiConnector
 {
@@ -52,9 +50,8 @@ class ClaudeConnector implements AiConnector
 
         $this->tokens = 0;
 
-        // `thinking` is deliberately omitted: Claude Opus 5 runs adaptive
-        // thinking by default, which is what we want, and maxTokens is the
-        // real cost ceiling on a short reply.
+        // `thinking` is deliberately omitted: Opus 5 runs adaptive thinking by
+        // default, and maxTokens is the real ceiling on a short reply.
         $message = $this->call(fn () => $this->client()->messages->create(
             maxTokens: $this->maxTokens,
             messages: [['role' => 'user', 'content' => $prompt]],

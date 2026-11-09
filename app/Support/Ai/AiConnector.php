@@ -5,19 +5,12 @@ namespace App\Support\Ai;
 use Closure;
 
 /**
- * The one way this application talks to a language model.
- *
- * Everything above this line - services, controllers, views - knows only this
- * interface, so the vendor behind it can change, be switched off, or be faked
- * in tests without a single caller changing. Tests bind a fake implementation,
- * which is what keeps the suite offline, free and deterministic.
+ * The one way this app talks to a model. Callers know only this interface, so
+ * the vendor can change or be faked in tests without touching them.
  */
 interface AiConnector
 {
-    /**
-     * Whether a real model is reachable. False means no credentials are set -
-     * callers must degrade gracefully rather than fail.
-     */
+    /** False when no credentials are set - callers degrade instead of failing. */
     public function isConfigured(): bool;
 
     /**
@@ -28,13 +21,9 @@ interface AiConnector
     public function complete(string $system, string $prompt): string;
 
     /**
-     * Carry on a conversation in which the model may call tools, and return its
-     * final reply once it has stopped calling them.
-     *
-     * The tool loop lives behind this method so nothing above it ever handles a
-     * vendor's message objects. Callers describe the tools and supply one
-     * closure that runs them; it returns the result as text for the model to
-     * read, or throws ToolFailed to tell the model the call did not work.
+     * Continue a conversation where the model may call tools; returns the final
+     * reply. The tool loop stays behind this method, so no caller ever handles a
+     * vendor message object.
      *
      * @param  list<array{role: 'user'|'assistant', content: string}>  $messages  oldest first, ending on the visitor
      * @param  list<array{name: string, description: string, inputSchema: array<string, mixed>}>  $tools
@@ -44,10 +33,6 @@ interface AiConnector
      */
     public function converse(string $system, array $messages, array $tools, Closure $runTool): string;
 
-    /**
-     * Tokens the most recent complete() or converse() call used, input and
-     * output, summed over every tool round. Zero before any call. Recorded
-     * against each reply so the agent can see what the assistant costs.
-     */
+    /** Tokens the last call used, summed over tool rounds; zero before any call. */
     public function lastTokens(): int;
 }
