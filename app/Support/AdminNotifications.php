@@ -43,10 +43,35 @@ final class AdminNotifications
         $groups = [];
 
         if ($this->wants('enquiries') && $this->user->can('enquiries.view')) {
+            // Chat leads come first and in red: the bubble ran out of answers,
+            // the visitor left a name and email, and there is a person to reply
+            // to. They are kept out of the enquiries band below, so one visitor
+            // is never counted twice.
+            $leads = $this->group(
+                'leads',
+                'Chat leads to answer',
+                Enquiry::query()->needsReply()->where('source', Enquiry::SOURCE_CHAT)->latest(),
+                route('admin.enquiries.index'),
+                fn(Enquiry $enquiry) => [
+                    'title' => $enquiry->name,
+                    'meta'  => $enquiry->email ?: ($enquiry->phone ?: $enquiry->typeLabel()),
+                    'url'   => route('admin.enquiries.show', $enquiry),
+                    'at'    => $enquiry->created_at?->diffForHumans(short: true),
+                    'icon'  => 'alert',
+                    'tone'  => 'red',
+                ],
+            );
+
+            if ($leads['count'] > 0) {
+                $groups[] = $leads;
+            }
+
             $groups[] = $this->group(
                 'enquiries',
                 'Enquiries to answer',
-                Enquiry::query()->needsReply()->with('property')->latest(),
+                Enquiry::query()->needsReply()
+                    ->where(fn(Builder $query) => $query->whereNull('source')->orWhere('source', '!=', Enquiry::SOURCE_CHAT))
+                    ->with('property')->latest(),
                 route('admin.enquiries.index'),
                 fn(Enquiry $enquiry) => [
                     'title' => $enquiry->name,
@@ -62,7 +87,12 @@ final class AdminNotifications
             $groups[] = $this->group(
                 'questions',
                 'Assistant could not answer',
-                ChatUnansweredQuestion::query()->where('created_at', '>=', now()->subWeek())->latest(),
+                // A question whose chat became a lead is answered by that lead,
+                // and appearing here too would be the same failure twice.
+                ChatUnansweredQuestion::query()
+                    ->where('created_at', '>=', now()->subWeek())
+                    ->whereDoesntHave('conversation', fn(Builder $query) => $query->whereNotNull('enquiry_id'))
+                    ->latest(),
                 route('admin.assistant.questions'),
                 fn(ChatUnansweredQuestion $question) => [
                     'title' => Str::limit($question->question, 70),

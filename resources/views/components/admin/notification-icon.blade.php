@@ -11,6 +11,7 @@ $tones = [
 'teal' => 'bg-teal-50 text-teal-700',
 'clay' => 'bg-clay-50 text-clay-700',
 'indigo' => 'bg-indigo-50 text-indigo-700',
+'red' => 'bg-red-50 text-red-700',
 ];
 @endphp
 
@@ -36,6 +37,12 @@ $tones = [
         <path d="M20 12a8 8 0 1 0-3.2 6.4L21 20l-1.1-3.6A7.9 7.9 0 0 0 20 12Z" />
         <path d="M9.8 9.4a2.2 2.2 0 1 1 3.4 1.9c-.7.5-1.2.9-1.2 1.7" />
         <path d="M12 16.3h.01" />
+        @break
+
+        @case('alert')
+        <path d="M12 4.5 3.9 18.4a1.4 1.4 0 0 0 1.2 2.1h13.8a1.4 1.4 0 0 0 1.2-2.1L12 4.5Z" />
+        <path d="M12 9.6v4.4" />
+        <path d="M12 17.2h.01" />
         @break
 
         @default

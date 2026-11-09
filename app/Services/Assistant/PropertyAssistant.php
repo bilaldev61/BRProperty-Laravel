@@ -20,6 +20,7 @@ class PropertyAssistant
     private readonly AiConnector $ai,
     private readonly QuickAnswers $quick,
     private readonly RulesSearch $rules,
+    private readonly ContactCapture $contact,
   ) {}
 
   /** On when the bubble is enabled; rules-only counts as on. */
@@ -40,6 +41,10 @@ class PropertyAssistant
    * A model that cannot be reached is treated exactly like a model that is
    * switched off: the rules answer instead, so a dead key never turns the chat
    * into an apology loop.
+   *
+   * A message carrying an email address is not a question - it is the visitor
+   * taking us up on the offer to pass their details on. That runs first, even
+   * past the message cap, because it is the one reply that has to come back.
    */
   public function reply(ChatConversation $conversation, string $message): string
   {
@@ -48,7 +53,9 @@ class PropertyAssistant
 
     $tokens = null;
 
-    if ($conversation->hasReachedLimit()) {
+    if ($lead = $this->contact->capture($conversation, $message)) {
+      [$reply, $answeredBy] = [$lead, ChatMessage::BY_LEAD];
+    } elseif ($conversation->hasReachedLimit()) {
       [$reply, $answeredBy] = [$this->handOff(), ChatMessage::BY_LIMIT];
     } elseif ($quick = $this->quick->answer($conversation, $message)) {
       [$reply, $answeredBy] = [$quick['text'], ChatMessage::BY_RULE_PREFIX . $quick['kind']];
@@ -99,7 +106,7 @@ class PropertyAssistant
   private function handOff(): string
   {
     return sprintf(
-      "We've covered a lot - the best next step is to speak to %s directly on %s (call or WhatsApp). They can answer the rest properly.",
+      "We've covered a lot - the best next step is to speak to %s directly on %s (call or WhatsApp). They can answer the rest properly. If you would rather not call, leave your name and email here and they will come back to you.",
       config('agent.name'),
       config('agent.phone'),
     );

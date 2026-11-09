@@ -50,6 +50,13 @@ class EnquiryPriority
             return [$enquiry->qualification['grade'], $enquiry->qualification['summary'] ?? 'Qualified by the phone agent'];
         }
 
+        // A chat that ran out of answers handed its visitor to a person. They
+        // have already spoken to us once and asked to be contacted, so an email
+        // address here is worth more than one typed into a form.
+        if ($enquiry->cameFromChat()) {
+            return [self::WARM, 'Went through the assistant chat and left contact details'];
+        }
+
         if ($enquiry->type === 'appraisal') {
             return static::assessSeller($enquiry);
         }

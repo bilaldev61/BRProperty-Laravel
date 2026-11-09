@@ -173,7 +173,9 @@ class AssistantQuickAnswersTest extends TestCase
             // Two questions in one used to land here. They are answered now,
             // both halves together - see AssistantRuleHygieneTest.
             'gives a phone number'   => ['Call me on 512 555 0198'],
-            'gives an email'         => ['Email me at marcus@example.com'],
+            // An address is no longer a model question: it becomes a lead with
+            // the name read off it - see AssistantContactCaptureTest.
+            'asks for a reason'      => ['Explain the payment terms to me'],
             'wants to visit'         => ['Can I visit on Saturday?'],
             'roman urdu visit'       => ['Main ye ghar dekhna chahta hoon'],
             'a search'               => ['Any houses for sale under AED 700,000?'],

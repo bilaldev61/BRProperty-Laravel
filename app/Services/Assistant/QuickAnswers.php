@@ -480,10 +480,16 @@ class QuickAnswers
         }
 
         $about = $conversation->property ? ' for this property' : '';
+        $agent = config('agent.name');
+
+        // Once the details are in, asking for them again reads as a bot that
+        // forgot the conversation it is in the middle of.
+        $ask = $conversation->isLead()
+            ? ' ' . $agent . ' has your details and will be in touch.'
+            : ' Leave your name and email here and ' . $agent . ' will come back to you.';
 
         return $this->reply(
-            config('agent.name') . ' will confirm ' . self::DEFERRAL_PHRASES[$topic] . $about . ' - I do not want to guess on that. '
-                . 'If you share your name and phone number, I will pass them on for a call back.',
+            $agent . ' will confirm ' . self::DEFERRAL_PHRASES[$topic] . $about . ' - I do not want to guess on that.' . $ask,
             'deferral_' . $topic,
         );
     }

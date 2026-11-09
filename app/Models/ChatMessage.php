@@ -20,6 +20,7 @@ class ChatMessage extends Model
     public const BY_AI          = 'ai';
     public const BY_LIMIT       = 'limit';
     public const BY_FALLBACK    = 'fallback';
+    public const BY_LEAD        = 'lead';
     public const BY_RULE_PREFIX = 'rule:';
 
     protected $guarded = [];

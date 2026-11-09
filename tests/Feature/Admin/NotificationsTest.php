@@ -178,6 +178,47 @@ class NotificationsTest extends TestCase
             ->assertSee('bg-teal-50', false);
     }
 
+    public function test_a_chat_lead_is_red_and_sits_above_the_rest(): void
+    {
+        $conversation = ChatConversation::create(['token' => uniqid('lead', true), 'visitor_messages' => 2]);
+        $lead = $this->enquiry('Ahmed', ['source' => Enquiry::SOURCE_CHAT, 'email' => 'ahmed@example.com']);
+        $conversation->update(['enquiry_id' => $lead->id]);
+
+        $this->enquiry('Nadia');
+
+        $groups = $this->feed(User::factory()->agent()->create())->groups();
+
+        $this->assertSame(['leads', 'enquiries', 'questions'], array_column($groups, 'key'));
+        $this->assertSame(1, $groups[0]['count']);
+        $this->assertSame('red', $groups[0]['items'][0]['tone']);
+        $this->assertSame('alert', $groups[0]['items'][0]['icon']);
+
+        // The address is the whole point of the row: it is what the form
+        // version of this lead would have given the agent all along.
+        $this->assertSame('ahmed@example.com', $groups[0]['items'][0]['meta']);
+
+        // Listed once - the visitor is not in the enquiries band as well.
+        $this->assertSame(['Nadia'], array_column($groups[1]['items'], 'title'));
+    }
+
+    public function test_a_question_whose_chat_became_a_lead_leaves_the_question_list(): void
+    {
+        $this->question('Is the price negotiable?');
+
+        $conversation = ChatConversation::create(['token' => uniqid('lead', true), 'visitor_messages' => 2]);
+        $conversation->unansweredQuestions()->create(['topic' => 'price_negotiation', 'question' => 'Is the price negotiable?']);
+        $lead = $this->enquiry('Ahmed', ['source' => Enquiry::SOURCE_CHAT]);
+        $conversation->update(['enquiry_id' => $lead->id]);
+
+        $questions = collect($this->feed(User::factory()->agent()->create())->groups())
+            ->firstWhere('key', 'questions');
+
+        // The lead is the answer to that question now, and the bell says so
+        // once: a red row above, not a clay row that repeats it.
+        $this->assertSame(1, $questions['count']);
+        $this->assertStringContainsString('price negotiable', $questions['items'][0]['title']);
+    }
+
     public function test_the_dashboard_no_longer_carries_the_new_property_button(): void
     {
         $owner = User::factory()->owner()->create();

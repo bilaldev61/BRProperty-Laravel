@@ -336,9 +336,10 @@ class RulesSearch
             : 'Tell me what you are after and I will look again.';
 
         return sprintf(
-            "I do not have any listings%s at the moment. %s Leave your details with %s on %s and I will pass them on for whatever comes next.",
+            "I do not have any listings%s at the moment. %s If you leave your name and email here, %s will pass on whatever comes next - or call %s on %s.",
             $what,
             $lead,
+            $agent,
             $agent,
             config('agent.phone'),
         );
@@ -350,20 +351,28 @@ class RulesSearch
         $agent = config('agent.name');
         $phone = config('agent.phone');
 
+        // The last thing before the phone number, so a visitor who would rather
+        // not call still leaves a way to be reached.
+        $ask = $conversation->isLead()
+            ? ''
+            : "\n\nLeave your name and email here and {$agent} will come back to you on it.";
+
         if ($conversation->property) {
             return sprintf(
-                'For %s, %s can answer the details and arrange a viewing - call or WhatsApp on %s, or use the enquiry form on this page.',
+                'For %s, %s can answer the details and arrange a viewing - call or WhatsApp on %s, or use the enquiry form on this page.%s',
                 $conversation->property->title,
                 $agent,
                 $phone,
+                $ask,
             );
         }
 
         return sprintf(
-            "I can search our Dubai listings for you - just tell me the area (like Dubai Marina or Business Bay), how many bedrooms, and a budget, or whether you are renting.\n\nYou can also browse everything at [all our listings](%s), or call %s on %s.",
+            "I can search our Dubai listings for you - just tell me the area (like Dubai Marina or Business Bay), how many bedrooms, and a budget, or whether you are renting.\n\nYou can also browse everything at [all our listings](%s), or call %s on %s.%s",
             route('for-sale'),
             $agent,
             $phone,
+            $ask,
         );
     }
 
