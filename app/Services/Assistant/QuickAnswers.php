@@ -17,11 +17,23 @@ class QuickAnswers
     /** Longer than this is a conversation, not a lookup. */
     private const MAX_LENGTH = 140;
 
-    /** Whole-message small talk. */
-    private const GREETING = '/^(hi+|hello|hey|salam|salaam|assalam ?o? ?alaikum|aoa|good (morning|afternoon|evening))$/';
+    /**
+     * A hello however it gets typed on a phone: vowels dropped ("hlo", "slm"),
+     * doubled letters ("hii"), one word short of "assalamualaikum".
+     */
+    private const HELLO = '(?:hi+|h[ae]l+o+|hl+o*w?|hey+|hy+|hai|sala+m|slm|assalam[u]? ?o? ?alaikum|aoa|yo|good (?:morning|afternoon|evening|day))';
+
+    /**
+     * Whole-message small talk, and it stays whole-message: "hi do you have a
+     * studio in jvc" is a search and must reach the search. People repeat
+     * themselves ("hlo hi"), so the word may come more than once.
+     */
+    private const GREETING = '/^(?:' . self::HELLO . '(?: +' . self::HELLO . ')*)$/';
+
+    private const THANKS_WORD = '(?:thanks?( you)?( so much)?|th[nx]|thanx|ty[s]?m?|thank|shukriya|jazak ?allah|bye|goodbye|allah hafiz)';
 
     // Not a bare "ok": after "shall I pass your details on?" that is an answer.
-    private const THANKS = '/^(ok(ay)? thanks?|thanks?( you)?( so much)?|thx|shukriya|jazak ?allah|bye|goodbye|allah hafiz)$/';
+    private const THANKS = '/^(?:ok(ay)? ' . self::THANKS_WORD . '|' . self::THANKS_WORD . '(?: +' . self::THANKS_WORD . ')*)$/';
 
     /** Patterns that force the whole message to the model. */
     private const NEEDS_MODEL = [

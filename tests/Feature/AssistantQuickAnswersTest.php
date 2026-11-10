@@ -102,8 +102,13 @@ class AssistantQuickAnswersTest extends TestCase
     {
         return [
             'greeting'     => ['Hello!', 'Hi!'],
+            'greeting typed in a hurry' => ['hlo', 'Hi!'],
+            'greeting without vowels'   => ['slm', 'Hi!'],
+            'greeting said twice'       => ['hlo hi', 'Hi!'],
             'salam'        => ['Assalam o alaikum', 'Hi!'],
+            'salam run together' => ['assalamualaikum', 'Hi!'],
             'thanks'       => ['Thank you', "You're welcome"],
+            'thanks abbreviated'  => ['ty', "You're welcome"],
             'contact'      => ['What is your phone number?', '+971 50 123 4567'],
             'hours'        => ['What are your office hours', 'Saturday: 10:00am - 4:00pm'],
             'office'       => ['Where is your office?', 'Sheikh Zayed Road'],
@@ -116,6 +121,27 @@ class AssistantQuickAnswersTest extends TestCase
     {
         $this->assertStringContainsString($expected, $this->ask($question));
         $this->assertSame(0, $this->ai->calls);
+    }
+
+    /**
+     * The hello patterns are loose on purpose, so the words they must not catch
+     * are pinned here: a real question that merely starts with a greeting is
+     * still a question, and a word shaped like "hallo" is not a hello.
+     */
+    public function test_loose_greeting_patterns_still_leave_real_questions_alone(): void
+    {
+        foreach (
+            [
+                'hall',
+                'the hall is nice',
+                'type',
+                'hi do you have a studio in jvc for rent',
+                'hlo what is the price',
+            ] as $message
+        ) {
+            $this->ask($message);
+            $this->assertNotSame('rule:greeting', $this->lastReply()->answered_by, "\"{$message}\" is not a bare hello");
+        }
     }
 
     public function test_off_topic_questions_are_declined_without_the_model(): void

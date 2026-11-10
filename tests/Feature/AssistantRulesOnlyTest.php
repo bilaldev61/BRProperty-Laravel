@@ -97,10 +97,22 @@ class AssistantRulesOnlyTest extends TestCase
     {
         $this->house();
 
-        $reply = $this->ask('hlooo')->assertOk()->json('reply');
+        $reply = $this->ask('sup')->assertOk()->json('reply');
 
         // Not a search, so the guide reply offers a way forward rather than a dead end.
         $this->assertStringContainsString('all our listings', $reply);
+        $this->assertStringNotContainsString("can't answer", $reply);
+    }
+
+    public function test_a_hello_typed_without_its_vowels_is_answered_as_a_hello(): void
+    {
+        $this->house();
+
+        // "hlooo" used to fall through to the guide paragraph; it is a greeting
+        // and the visitor should be greeted back.
+        $reply = $this->ask('hlooo')->assertOk()->json('reply');
+
+        $this->assertStringContainsString('Hi! Tell me the area', $reply);
         $this->assertStringNotContainsString("can't answer", $reply);
     }
 
