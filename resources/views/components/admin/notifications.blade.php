@@ -44,39 +44,39 @@
                  them: on a bad day every band has work in it, and a bell that
                  runs past the fold buries the links under the page. --}}
             <div class="max-h-[min(60vh,32rem)] overflow-y-auto">
-            @forelse ($groups as $group)
-            <div class="border-b border-ink-50 last:border-0">
-                <p class="flex items-center justify-between gap-2 px-4 pt-3 text-xs font-semibold text-ink-700">
-                    {{ $group['label'] }}
-                    <span class="rounded-full bg-sand-100 px-1.5 text-[11px] text-ink-500 tabular-nums">{{ $group['count'] }}</span>
-                </p>
+                @forelse ($groups as $group)
+                <div class="border-b border-ink-50 last:border-0">
+                    <p class="flex items-center justify-between gap-2 px-4 pt-3 text-xs font-semibold text-ink-700">
+                        {{ $group['label'] }}
+                        <span class="rounded-full bg-sand-100 px-1.5 text-[11px] text-ink-500 tabular-nums">{{ $group['count'] }}</span>
+                    </p>
 
-                <ul>
-                    @foreach ($group['items'] as $item)
-                    <li>
-                        <a href="{{ $item['url'] }}" class="flex items-start gap-2.5 px-4 py-2 hover:bg-sand-50">
-                            <x-admin.notification-icon :name="$item['icon']" :tone="$item['tone']" class="mt-0.5" />
-                            <span class="min-w-0 flex-1">
-                                <span class="flex items-baseline justify-between gap-3">
-                                    <span class="truncate text-sm text-ink-900">{{ $item['title'] }}</span>
-                                    <span class="shrink-0 text-[11px] text-ink-400">{{ $item['at'] }}</span>
+                    <ul>
+                        @foreach ($group['items'] as $item)
+                        <li>
+                            <a href="{{ $item['url'] }}" class="flex items-start gap-2.5 px-4 py-2 hover:bg-sand-50">
+                                <x-admin.notification-icon :name="$item['icon']" :tone="$item['tone']" class="mt-0.5" />
+                                <span class="min-w-0 flex-1">
+                                    <span class="flex items-baseline justify-between gap-3">
+                                        <span class="truncate text-sm text-ink-900">{{ $item['title'] }}</span>
+                                        <span class="shrink-0 text-[11px] text-ink-400">{{ $item['at'] }}</span>
+                                    </span>
+                                    <span class="mt-0.5 block truncate text-xs text-ink-500">{{ $item['meta'] }}</span>
                                 </span>
-                                <span class="mt-0.5 block truncate text-xs text-ink-500">{{ $item['meta'] }}</span>
-                            </span>
-                        </a>
-                    </li>
-                    @endforeach
-                </ul>
+                            </a>
+                        </li>
+                        @endforeach
+                    </ul>
 
-                <p class="px-4 pt-1 pb-3">
-                    <a href="{{ $group['url'] }}" class="text-xs font-medium text-brass-700 hover:underline">
-                        {{ $group['count'] > count($group['items']) ? 'See all ' . $group['count'] : 'Open' }}
-                    </a>
-                </p>
-            </div>
-            @empty
-            <p class="px-4 py-6 text-sm text-ink-400">Nothing waiting.</p>
-            @endforelse
+                    <p class="px-4 pt-1 pb-3">
+                        <a href="{{ $group['url'] }}" class="text-xs font-medium text-brass-700 hover:underline">
+                            {{ $group['count'] > count($group['items']) ? 'See all ' . $group['count'] : 'Open' }}
+                        </a>
+                    </p>
+                </div>
+                @empty
+                <p class="px-4 py-6 text-sm text-ink-400">Nothing waiting.</p>
+                @endforelse
             </div>
         </div>
     </details>
