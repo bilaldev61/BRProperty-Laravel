@@ -24,16 +24,27 @@ class QuickAnswers
     private const HELLO = '(?:hi+|h[ae]l+o+|hl+o*w?|hey+|hy+|hai|sala+m|slm|assalam[u]? ?o? ?alaikum|aoa|yo|good (?:morning|afternoon|evening|day))';
 
     /**
+     * Trailing fillers a visitor types after a hello - polite address or
+     * meaningless noise in South-Asian English. A word in FILLER is never
+     * a question on its own, so "hlo ge" is still just a hello.
+     */
+    private const FILLER = '(?:ge|ji|yaar|sahab|sir|madam|bhai|na|haan|bz|bas|bss|to|kya)';
+
+    /**
      * Whole-message small talk, and it stays whole-message: "hi do you have a
      * studio in jvc" is a search and must reach the search. People repeat
-     * themselves ("hlo hi"), so the word may come more than once.
+     * themselves ("hlo hi"), so the word may come more than once. Trailing
+     * fillers after the hello are still small talk: "hlo ge", "hi ji".
      */
-    private const GREETING = '/^(?:' . self::HELLO . '(?: +' . self::HELLO . ')*)$/';
+    private const GREETING = '/^(?:' . self::HELLO . '(?: +' . self::HELLO . ')*(?: +' . self::FILLER . ')*)$/';
 
     private const THANKS_WORD = '(?:thanks?( you)?( so much)?|th[nx]|thanx|ty[s]?m?|thank|shukriya|jazak ?allah|bye|goodbye|allah hafiz)';
 
     // Not a bare "ok": after "shall I pass your details on?" that is an answer.
     private const THANKS = '/^(?:ok(ay)? ' . self::THANKS_WORD . '|' . self::THANKS_WORD . '(?: +' . self::THANKS_WORD . ')*)$/';
+
+    /** "Are you a real person?" / "Who made you?" - a question about the assistant itself. */
+    private const IDENTITY = '/\b(?:are you|you(?:\'re| are)?)\s+(?:an?\s+|the\s+)?(?:real|human|person|ai|bot|robot|artificial|chat.?gpt|openai)\b|\b(?:who\s+(?:made|built|created)\s+you|what\s+are\s+you|is\s+this\s+(?:ai|a\s+bot|a\s+robot))\b/i';
 
     /** Patterns that force the whole message to the model. */
     private const NEEDS_MODEL = [
@@ -113,7 +124,7 @@ class QuickAnswers
     /** Words that make a message about property - off-topic needs none of them. */
     private const PROPERTY_WORDS = '/\b(house|villa|home|ghar|plot|land|flat|apartment|townhouse|property|properties|penthouse|studio|marla|kanal|crore|lakh|aed|dirham|dubai|marina|jvc|jlt|palm|downtown|business bay|rent|buy|sell|listing|area|community|service charge|price|bed|room)\w*/';
 
-    private const OFF_TOPIC = '/\b(weather|recipe|cricket|football|movie|film|song|joke|poem|story|code|coding|python|javascript|php|homework|essay|assignment|maths?|translate|politics|election|news|chatgpt|openai|who (made|built|created) you|write me)\b/';
+    private const OFF_TOPIC = '/\b(weather|recipe|cricket|football|movie|film|song|joke|poem|story|code|coding|python|javascript|php|homework|essay|assignment|maths?|translate|politics|election|news|chatgpt|openai|write me)\b/';
 
     /** @return array{text: string, kind: string}|null */
     public function answer(ChatConversation $conversation, string $message): ?array
@@ -130,6 +141,10 @@ class QuickAnswers
 
         if (preg_match(self::THANKS, $text)) {
             return $this->reply("You're welcome. Ask me anything else about our properties, or call " . config('agent.name') . ' on ' . config('agent.phone') . '.', 'thanks');
+        }
+
+        if (preg_match(self::IDENTITY, $message)) {
+            return $this->identity();
         }
 
         if (preg_match(self::OFF_TOPIC, $text) && ! preg_match(self::PROPERTY_WORDS, $text)) {
@@ -515,6 +530,18 @@ class QuickAnswers
         return $property
             ? 'Hi! Ask me anything about ' . $property->title . ' - price, size, features, or arranging a visit.'
             : 'Hi! Tell me the area, budget and type of property you are after, and I will check our listings.';
+    }
+
+    private function identity(): array
+    {
+        $agent  = config('agent.name');
+        $agency = config('agent.agency');
+
+        return $this->reply(
+            "I'm the website assistant for {$agency} - an AI tool that answers from our listing records. " .
+            'For anything that needs a human, ' . $agent . ' and the team handle the real side.',
+            'identity',
+        );
     }
 
     private function matchesAny(array $patterns, string $text): bool

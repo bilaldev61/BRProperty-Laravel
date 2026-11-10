@@ -35,6 +35,8 @@ class RulesSearch
 
     private const BUY_WORDS = '/\bbuy(?:ing)?\b|\bpurchas(?:e|ing)\b|\bsell(?:ing)?\b/';
 
+    private const VIEWING_WORDS = '/\b(viewings?|inspection)\b/';
+
     /**
      * Abbreviations visitors type. A matched alias pins the area even with nothing
      * there: "none in that area" is honest, every listing we have is not.
@@ -87,15 +89,11 @@ class RulesSearch
     }
 
     /**
-     * The search on its own, for the layer that runs ahead of the model.
+     * Process answers and searches, for the layer that runs ahead of the model.
      *
-     * Returns null wherever this is not a query the records can settle: a
-     * judgement ("compare this with...") needs the model, and a message that
-     * produced no criterion at all ("show me something") would be answered with
-     * the whole catalogue. Filtering on nothing is how a rule turns a question
-     * into a confident wrong answer, so only a parsed criterion counts here -
-     * and a lone type word is prose, not a query: "write me a poem about a
-     * house" is not a request for every house we have.
+     * A process question ("how do I book a viewing?") gets its steps from config
+     * for free. A stated filter gets a database query. Everything else - a
+     * judgement, a message with no criterion - returns null and reaches the model.
      *
      * @return array{text: string, kind: string}|null
      */
@@ -103,7 +101,11 @@ class RulesSearch
     {
         $text = $this->normalise($message);
 
-        if (preg_match(self::NEEDS_JUDGEMENT, $text) || $this->process($text) !== null) {
+        if (($steps = $this->process($text)) !== null) {
+            return $this->reply($steps, 'process');
+        }
+
+        if (preg_match(self::NEEDS_JUDGEMENT, $text)) {
             return null;
         }
 
@@ -206,8 +208,9 @@ class RulesSearch
         }
 
         $topic = match (true) {
-            (bool) preg_match(self::RENT_WORDS, $text) => 'renting',
-            (bool) preg_match(self::BUY_WORDS, $text)  => 'buying',
+            (bool) preg_match(self::RENT_WORDS, $text)   => 'renting',
+            (bool) preg_match(self::BUY_WORDS, $text)    => 'buying',
+            (bool) preg_match(self::VIEWING_WORDS, $text) => 'viewing',
             default => null,
         };
 

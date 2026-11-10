@@ -229,6 +229,16 @@ return [
             ],
             'note' => 'Fees, deposit size and timelines are confirmed for each home - :agent will go through them with you.',
         ],
+        'viewing' => [
+            'label' => 'How viewings work',
+            'steps' => [
+                'Find a property you like on our listings page or through this chat.',
+                'Use the enquiry form on the listing page, or call/WhatsApp :agent to say which one and when suits.',
+                'The agent confirms a time and meets you there - most viewings happen the same or next day.',
+                'Bring questions about price, payment or possession to the viewing; the agent answers on the spot.',
+            ],
+            'note' => ':agent will arrange the time directly with you - there is no online booking system.',
+        ],
     ],
 
     'seo' => [

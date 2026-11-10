@@ -127,6 +127,104 @@ class AssistantQuickAnswersTest extends TestCase
     }
 
     /**
+     * Identity questions - the visitor wants to know what they are talking to.
+     * A static answer from config; the model cannot add to it and should not
+     * pay 2,600 tokens to say what one line can.
+     */
+    /** @return array<string, array{0: string}> */
+    public static function identityQuestions(): array
+    {
+        return [
+            'are you a real person'  => ['Are you a real person or AI?'],
+            'are you a bot'          => ['are you a bot'],
+            'are you human'          => ['are you human'],
+            'who made you'           => ['who made you'],
+            'who built you'          => ['who built you'],
+            'what are you'           => ['what are you'],
+            'is this ai'             => ['is this ai'],
+            'you are an ai'          => ['you are an ai right'],
+            'are you chatgpt'        => ['are you chatgpt'],
+        ];
+    }
+
+    #[DataProvider('identityQuestions')]
+    public function test_identity_questions_are_answered_without_the_model(string $message): void
+    {
+        $reply = $this->ask($message);
+
+        $this->assertStringContainsString('website assistant', $reply);
+        $this->assertSame('rule:identity', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    /**
+     * "Are you open on Saturdays?" is about hours, not about whether the
+     * assistant is real. The identity rule must not swallow it.
+     */
+    public function test_identity_does_not_catch_questions_about_the_agency(): void
+    {
+        $this->ask('Are you open on Saturday?');
+        $this->assertNotSame('rule:identity', $this->lastReply()->answered_by);
+    }
+
+    /**
+     * A how-do-I-book-a-viewing question is procedural; the model can only
+     * defer ("team will confirm"), so rules answer it for free.
+     */
+    public function test_a_process_question_about_viewings_is_answered_from_config(): void
+    {
+        foreach (
+            [
+                'How do I book a viewing?',
+                'What is the process for arranging a viewing?',
+                'How do viewings work?',
+            ] as $message
+        ) {
+            $reply = $this->ask($message);
+            $this->assertStringContainsString('How viewings work', $reply, "\"{$message}\"");
+            $this->assertSame('rule:process', $this->lastReply()->answered_by, "\"{$message}\"");
+        }
+
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    /**
+     * "I want to book a viewing" is an action request, not a process question -
+     * the model needs to handle the scheduling.
+     */
+    public function test_an_action_viewing_request_still_reaches_the_model(): void
+    {
+        $reply = $this->ask('I want to book a viewing for Saturday at 3', $this->property());
+        $this->assertSame('MODEL REPLY', $reply);
+        $this->assertSame(1, $this->ai->calls);
+    }
+
+    /**
+     * Visitors type fillers after greetings - "hlo ge", "hi ji". The
+     * whole-message greeting pattern should tolerate them without swallowing
+     * a real question that merely starts with "hi".
+     */
+    public function test_greeting_with_filler_words_is_still_answered_as_small_talk(): void
+    {
+        foreach (
+            [
+                'hlo ge',
+                'hi ji',
+                'hello yaar',
+                'salam sahab',
+                'hai bhai',
+                'hlo yaar ji',
+            ] as $message
+        ) {
+            $reply = $this->ask($message);
+            $this->assertStringContainsString('Hi!', $reply, "\"{$message}\" should be a greeting");
+            $this->assertSame('rule:greeting', $this->lastReply()->answered_by, "\"{$message}\"");
+        }
+
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    /**
      * The hello patterns are loose on purpose, so the words they must not catch
      * are pinned here: a real question that merely starts with a greeting is
      * still a question, and a word shaped like "hallo" is not a hello.
