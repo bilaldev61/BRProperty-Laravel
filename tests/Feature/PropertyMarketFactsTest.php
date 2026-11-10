@@ -178,6 +178,19 @@ class PropertyMarketFactsTest extends TestCase
         $this->assertSame($rule, $this->lastReply()->answered_by);
     }
 
+    public function test_a_market_question_is_not_read_as_a_question_about_the_view(): void
+    {
+        $property = $this->property();
+
+        // "Outlook" used to be one of the words that reached the view rule, so
+        // this question was answered with the view from the balcony.
+        $reply = $this->ask('What is the market outlook for next year?', $property);
+
+        $this->assertStringNotContainsString('The view is', $reply);
+        $this->assertSame('ai', $this->lastReply()->answered_by);
+        $this->assertSame(1, $this->ai->calls);
+    }
+
     public function test_a_missing_landmark_is_admitted_rather_than_guessed(): void
     {
         $property = $this->property(['nearby' => []]);

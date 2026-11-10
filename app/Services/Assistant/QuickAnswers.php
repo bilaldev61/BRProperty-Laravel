@@ -43,6 +43,10 @@ class QuickAnswers
         '/\b(visit|viewing|showing|see (it|the house|the home|the property)|tour (the|it)|dekhna|dekh sakt|meet|appointment)\b/',
         '/\b(offer|book|token|buy it|purchase)\b/',
         '/\b(compare|better|best|recommend|suggest|similar|cheaper|other)\b/',
+        // Worth-later questions have no answer on the record. "Outlook" especially:
+        // it used to be read as the view, so "what is the market outlook" was
+        // answered with "the view is Atlantis".
+        '/\b(invest|investing|investment|roi|resale|appreciation|capital gain|rental yield|market (?:value|price|trend|outlook)|outlook)\b/',
         '/\b(why|explain)\b/',
         // A search, not a question about the listing on screen.
         '/\b(houses|homes|plots|flats|condos?|townhomes?|apartments|properties|portions|any|under|below|above|between|budget|crore|lakh|million)\b/',
@@ -76,7 +80,7 @@ class QuickAnswers
         'location'      => '/\b(address|location|located|where is (it|this|the house)|kahan hai|kis jagah)\b/',
         'features'      => '/\b(features|amenities|facilities)\b/',
         'times'         => '/\b(viewings?|inspection|open house|dekhne ka time)\b/',
-        'view'          => '/\b(view|views|outlook|facing)\b/',
+        'view'          => '/\b(view|views|facing)\b/',
         'furnishing'    => '/\b(furnished|unfurnished|semi furnished|furnishing)\b/',
         'completion'    => '/\b(ready|off ?plan|completion date)\b/',
         'permit'        => '/\b(permit|dld|rera|tra ?khees|registered)\b/',
@@ -101,7 +105,7 @@ class QuickAnswers
     /** About the agency itself - true on any page. */
     private const AGENCY = [
         'contact' => '/\b(phone number|contact number|your number|whatsapp|how (do|can) i contact|contact (you|details))\b/',
-        'hours'   => '/\b(timings?|opening hours|office hours|when are you open|are you open|kab khul)\b/',
+        'hours'   => '/\b(timings?|(?<!\d )h[ou]*rs*|what time do you open|when are you open|are you open|kab khul|kitne baje)\b/',
         'office'  => '/\b(your office(?! (hours|timings?))|office address|office kahan|where are you based)\b/',
         'areas'   => '/\b((which|what) areas|areas (do )?you (cover|deal|work)|kin areas|kahan kahan)\b/',
     ];

@@ -111,6 +111,9 @@ class AssistantQuickAnswersTest extends TestCase
             'thanks abbreviated'  => ['ty', "You're welcome"],
             'contact'      => ['What is your phone number?', '+971 50 123 4567'],
             'hours'        => ['What are your office hours', 'Saturday: 10:00am - 4:00pm'],
+            'hours with the office word misspelt' => ['your offce hours', 'Saturday: 10:00am - 4:00pm'],
+            'hours with a stuck key' => ['office hourss', 'Saturday: 10:00am - 4:00pm'],
+            'hours without the word office' => ['what are your hours?', 'Saturday: 10:00am - 4:00pm'],
             'office'       => ['Where is your office?', 'Sheikh Zayed Road'],
             'areas'        => ['Which areas do you cover?', 'Business Bay'],
         ];
@@ -141,6 +144,23 @@ class AssistantQuickAnswersTest extends TestCase
         ) {
             $this->ask($message);
             $this->assertNotSame('rule:greeting', $this->lastReply()->answered_by, "\"{$message}\" is not a bare hello");
+        }
+    }
+
+    /**
+     * "hours" is also an ordinary word, and the opening-hours reply is wrong
+     * when it is one. Both of these have to reach the model instead.
+     */
+    public function test_hours_used_as_a_measurement_is_not_answered_with_our_opening_hours(): void
+    {
+        foreach (
+            [
+                'Is there a 24 hours gym',
+                'How many hours from marina to the airport',
+            ] as $message
+        ) {
+            $this->ask($message);
+            $this->assertNotSame('rule:agency_hours', $this->lastReply()->answered_by, "\"{$message}\" is not about our opening hours");
         }
     }
 
@@ -204,7 +224,8 @@ class AssistantQuickAnswersTest extends TestCase
             'asks for a reason'      => ['Explain the payment terms to me'],
             'wants to visit'         => ['Can I visit on Saturday?'],
             'roman urdu visit'       => ['Main ye ghar dekhna chahta hoon'],
-            'a search'               => ['Any houses for sale under AED 700,000?'],
+            // A stated filter is no longer a model question: the records answer
+            // it for free - see test_a_stated_filter_is_answered_by_the_search.
             'a comparison'           => ['Is this better than the one in Al Barsha?'],
             'a bare yes'             => ['ok'],
             'open question'          => ['Is this a good area for families?'],
@@ -219,6 +240,29 @@ class AssistantQuickAnswersTest extends TestCase
         $this->assertSame(1, $this->ai->calls);
         $this->assertSame('ai', $this->lastReply()->answered_by);
         $this->assertSame(500, $this->lastReply()->tokens);
+    }
+
+    public function test_a_stated_filter_is_answered_by_the_search_rather_than_the_model(): void
+    {
+        $property = $this->property();
+
+        $reply = $this->ask('Any houses for sale under AED 700,000?', $property);
+
+        // The visitor named a type and a ceiling, which is a query the records
+        // can settle without the model.
+        $this->assertStringContainsString('4-bed villa in Al Barsha', $reply);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+    }
+
+    public function test_a_lone_type_word_is_not_treated_as_a_search(): void
+    {
+        $property = $this->property();
+
+        // "House" is an ordinary noun in prose; answering it with every house we
+        // hold would be a confident wrong answer, so the model gets it.
+        $this->assertSame('MODEL REPLY', $this->ask('Please write a short poem about a house.', $property));
+        $this->assertSame(1, $this->ai->calls);
     }
 
     public function test_listing_questions_off_a_listing_page_go_to_the_model(): void
@@ -241,7 +285,10 @@ class AssistantQuickAnswersTest extends TestCase
 
         // "How big is it?" now means the Dubai Hills house, not this page's.
         $this->ask('How big is it?', $property);
-        $this->assertSame(2, $this->ai->calls);
+
+        // The search itself is answered from the records, so only the follow-up
+        // reaches the model - and it reaches it with the search in the history.
+        $this->assertSame(1, $this->ai->calls);
     }
 
     public function test_a_listing_with_nothing_recorded_goes_to_the_model(): void

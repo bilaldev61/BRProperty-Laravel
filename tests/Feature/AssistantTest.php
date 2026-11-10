@@ -116,14 +116,16 @@ class AssistantTest extends TestCase
     {
         $fake = $this->fake(new FakeAiConnector('Noted.'));
 
-        $this->ask('I want a villa in Business Bay')->assertOk();
-        $this->ask('Under AED 600K please')->assertOk();
+        // Both turns need the model: a stated filter would be answered from the
+        // records and never reach here.
+        $this->ask('Is this a good area for families?')->assertOk();
+        $this->ask('Why is the price so high?')->assertOk();
 
         $this->assertSame(1, ChatConversation::count());
         $this->assertSame([
-            ['role' => 'user', 'content' => 'I want a villa in Business Bay'],
+            ['role' => 'user', 'content' => 'Is this a good area for families?'],
             ['role' => 'assistant', 'content' => 'Noted.'],
-            ['role' => 'user', 'content' => 'Under AED 600K please'],
+            ['role' => 'user', 'content' => 'Why is the price so high?'],
         ], $fake->messages);
     }
 
@@ -253,13 +255,66 @@ class AssistantTest extends TestCase
         $this->property(['title' => 'Already Sold', 'status' => 'sold']);
 
         $fake = $this->fake((new FakeAiConnector())->callsTool('search_properties', ['area' => 'Al Barsha', 'max_price' => 700000]));
-        $this->ask('Villas in Al Barsha under AED 700K')->assertOk();
+
+        // Phrased as a comparison on purpose: a plain "villas in Al Barsha under
+        // 700K" is answered by the rules before the model, so this is how the
+        // tool's own filtering gets driven through the real pipeline.
+        $this->ask('Compare villas in Al Barsha under AED 700K')->assertOk();
 
         $result = json_decode($fake->resultOf('search_properties'), true);
         $this->assertSame(1, $result['total_matches']);
         $this->assertSame($match->slug, $result['properties'][0]['slug']);
         $this->assertSame(route('properties.show', $match), $result['properties'][0]['url']);
         $this->assertSame('AED 625,000', $result['properties'][0]['price']);
+    }
+
+    public function test_a_plain_search_is_answered_from_the_records_without_the_model(): void
+    {
+        $match = $this->property();
+        $this->property(['title' => 'Too Expensive', 'price' => 900000]);
+        $this->property(['title' => 'Wrong Area', 'suburb' => 'Downtown Dubai']);
+
+        $fake = $this->fake();
+
+        $reply = $this->ask('Villas in Al Barsha under AED 700K')->assertOk()->json('reply');
+
+        // The filter is stated, so the database answers it: free, instant and
+        // unable to invent a listing.
+        $this->assertSame('rule:search', ChatMessage::where('role', 'assistant')->latest('id')->value('answered_by'));
+        $this->assertSame(0, $fake->calls);
+        $this->assertStringContainsString($match->title, $reply);
+        $this->assertStringNotContainsString('Too Expensive', $reply);
+    }
+
+    public function test_a_search_with_nothing_to_filter_on_still_reaches_the_model(): void
+    {
+        $this->property();
+
+        $fake = $this->fake();
+
+        $this->ask('Show me something nice')->assertOk();
+
+        // No area, no budget, no type: filtering on nothing would list the whole
+        // catalogue at the visitor, so this stays the model's to interpret.
+        $this->assertSame('ai', ChatMessage::where('role', 'assistant')->latest('id')->value('answered_by'));
+        $this->assertSame(1, $fake->calls);
+    }
+
+    public function test_a_plural_type_word_still_filters_by_that_type(): void
+    {
+        $this->property(['type' => 'townhouse', 'title' => 'Townhouse with a courtyard']);
+        $this->property(['type' => 'house', 'title' => 'Villa next door']);
+
+        $fake = $this->fake();
+
+        $reply = $this->ask('Townhouses in Al Barsha for sale')->assertOk()->json('reply');
+
+        // "townhouses" is the word visitors use, and the plural has to read as
+        // the same type or the villa gets listed at them.
+        $this->assertStringContainsString('Townhouse with a courtyard', $reply);
+        $this->assertStringNotContainsString('Villa next door', $reply);
+        $this->assertSame('rule:search', ChatMessage::where('role', 'assistant')->latest('id')->value('answered_by'));
+        $this->assertSame(0, $fake->calls);
     }
 
     public function test_search_says_so_when_nothing_matches(): void

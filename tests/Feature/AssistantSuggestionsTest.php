@@ -137,6 +137,24 @@ class AssistantSuggestionsTest extends TestCase
         }
     }
 
+    /**
+     * A chip is the first thing a visitor clicks, so none of them may cost a
+     * model call even when the key is live: each search chip carries a filter
+     * the rules can run against the records themselves.
+     */
+    public function test_the_chips_cost_nothing_even_with_the_model_available(): void
+    {
+        $ai = $this->fake();
+        $this->stock();
+
+        foreach (app(AssistantSuggestions::class)->for(null) as $chip) {
+            $this->postJson('/assistant', ['message' => $chip])->assertOk();
+            $this->assertStringStartsWith(ChatMessage::BY_RULE_PREFIX, (string) $this->lastReply()->answered_by, $chip);
+        }
+
+        $this->assertSame(0, $ai->calls);
+    }
+
     public function test_every_chip_on_a_listing_is_answered_from_the_record(): void
     {
         $this->fake(FakeAiConnector::unconfigured());
@@ -163,13 +181,15 @@ class AssistantSuggestionsTest extends TestCase
         $connector = $this->fake(FakeAiConnector::failing());
         $this->stock();
 
-        $this->postJson('/assistant', ['message' => 'Apartments in Downtown Dubai for sale'])
+        // Phrased as a comparison on purpose: a search chip is answered before
+        // the model now, so this is the turn that used to dead-end at an apology.
+        $this->postJson('/assistant', ['message' => 'Is Downtown better than Business Bay for a 2 bed?'])
             ->assertOk()
             ->assertJsonPath('reply', fn($reply) => ! str_contains($reply, "Sorry, I can't answer"));
 
         // The model was tried first, failed, and the rules answered in its place.
         $this->assertSame(1, $connector->calls);
-        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertSame('rule:guide', $this->lastReply()->answered_by);
     }
 
     public function test_an_outage_leaves_a_whole_conversation_behind(): void

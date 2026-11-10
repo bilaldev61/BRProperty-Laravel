@@ -40,6 +40,10 @@
                 Waiting on you
             </p>
 
+            {{-- Groups come and go, so the panel is capped rather than sized to
+                 them: on a bad day every band has work in it, and a bell that
+                 runs past the fold buries the links under the page. --}}
+            <div class="max-h-[min(60vh,32rem)] overflow-y-auto">
             @forelse ($groups as $group)
             <div class="border-b border-ink-50 last:border-0">
                 <p class="flex items-center justify-between gap-2 px-4 pt-3 text-xs font-semibold text-ink-700">
@@ -73,6 +77,7 @@
             @empty
             <p class="px-4 py-6 text-sm text-ink-400">Nothing waiting.</p>
             @endforelse
+            </div>
         </div>
     </details>
     @endif

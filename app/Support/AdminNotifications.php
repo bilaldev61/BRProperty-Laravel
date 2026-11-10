@@ -16,7 +16,12 @@ use Illuminate\Support\Str;
  */
 final class AdminNotifications
 {
-    private const SHOWN = 4;
+    /**
+     * Rows per group in the bell. Three keeps the panel to one screen when all
+     * four groups have work in it; the count beside the label and the "See all"
+     * link carry the rest.
+     */
+    private const SHOWN = 3;
 
     /** The icon and tone each kind of enquiry carries in the bell. */
     private const ENQUIRY_LOOKS = [

@@ -83,6 +83,45 @@ class RulesSearch
             return $this->reply($this->guide($conversation), 'guide');
         }
 
+        return $this->runSearch($conversation, $criteria);
+    }
+
+    /**
+     * The search on its own, for the layer that runs ahead of the model.
+     *
+     * Returns null wherever this is not a query the records can settle: a
+     * judgement ("compare this with...") needs the model, and a message that
+     * produced no criterion at all ("show me something") would be answered with
+     * the whole catalogue. Filtering on nothing is how a rule turns a question
+     * into a confident wrong answer, so only a parsed criterion counts here -
+     * and a lone type word is prose, not a query: "write me a poem about a
+     * house" is not a request for every house we have.
+     *
+     * @return array{text: string, kind: string}|null
+     */
+    public function searchAnswer(ChatConversation $conversation, string $message): ?array
+    {
+        $text = $this->normalise($message);
+
+        if (preg_match(self::NEEDS_JUDGEMENT, $text) || $this->process($text) !== null) {
+            return null;
+        }
+
+        $criteria = $this->parse($text);
+
+        if ($criteria === [] || (count($criteria) === 1 && isset($criteria['type']))) {
+            return null;
+        }
+
+        return $this->runSearch($conversation, $criteria);
+    }
+
+    /**
+     * @param  array<string, mixed>  $criteria
+     * @return array{text: string, kind: string}
+     */
+    private function runSearch(ChatConversation $conversation, array $criteria): array
+    {
         $result = $this->search->search($criteria, self::SHOW_LIMIT);
         $what = $this->describe($criteria);
 
@@ -112,7 +151,7 @@ class RulesSearch
         foreach (
             [
                 'apartment' => '/\b(condo|condominium|apartment|flat|unit)s?\b/',
-                'townhouse' => '/\b(townhouse|townhome|duplex|triplex)\b/',
+                'townhouse' => '/\b(townhouse|townhome|duplex|triplex)s?\b/',
                 'acreage'   => '/\bfarm ?house|\bacre/',
                 'land'      => '/\b(plot|lot|land|homesite|acreage)s?\b/',
                 'house'     => '/\b(house|home|bungalow|villa|ranch|detached|single[- ]family)s?\b/',

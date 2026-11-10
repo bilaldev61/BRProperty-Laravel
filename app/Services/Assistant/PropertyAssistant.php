@@ -59,6 +59,11 @@ class PropertyAssistant
       [$reply, $answeredBy] = [$this->handOff(), ChatMessage::BY_LIMIT];
     } elseif ($quick = $this->quick->answer($conversation, $message)) {
       [$reply, $answeredBy] = [$quick['text'], ChatMessage::BY_RULE_PREFIX . $quick['kind']];
+    } elseif ($search = $this->rules->searchAnswer($conversation, $message)) {
+      // A stated filter is a database query, not a judgement, so it is run here
+      // even with the model up: the most common visitor action - "apartments in
+      // Business Bay" - then costs nothing and cannot invent a listing.
+      [$reply, $answeredBy] = [$search['text'], ChatMessage::BY_RULE_PREFIX . $search['kind']];
     } elseif (! $this->modelAvailable()) {
       // No model: search the database rather than dead-ending at the model.
       $rules = $this->rules->answer($conversation, $message);

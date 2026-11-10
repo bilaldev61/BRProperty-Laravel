@@ -55,6 +55,28 @@ class NotificationsTest extends TestCase
         $this->assertEqualsCanonicalizing(['Nadia', 'Omar'], array_column($group['items'], 'title'));
     }
 
+    public function test_a_group_shows_three_rows_and_leaves_the_rest_to_the_link(): void
+    {
+        foreach (range(1, 6) as $n) {
+            $this->enquiry('Enquiry ' . $n);
+        }
+
+        foreach (['Is the roof new?', 'What is the service charge?', 'Are pets allowed?', 'When was it built?', 'Is it freehold?'] as $text) {
+            $this->question($text);
+        }
+
+        $groups = $this->feed(User::factory()->agent()->create())->groups();
+
+        // The panel is a list of links, not the inbox: with more than three rows
+        // per group it runs off a laptop screen and hides the "See all" link.
+        foreach ($groups as $group) {
+            $this->assertLessThanOrEqual(3, count($group['items']), $group['label'] . ' should show three rows at most');
+        }
+
+        $this->assertSame(6, $groups[0]['count']);
+        $this->assertSame(5, $groups[1]['count']);
+    }
+
     public function test_a_closed_or_replied_enquiry_drops_off_the_bell(): void
     {
         $this->enquiry('Closed', ['status' => Enquiry::STATUS_CLOSED]);
