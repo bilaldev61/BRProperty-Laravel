@@ -49,6 +49,12 @@ class ChatConversation extends Model
         return $this->hasMany(ChatUnansweredQuestion::class);
     }
 
+    /** One row per model request; empty until the visitor reaches the model. */
+    public function usage(): HasMany
+    {
+        return $this->hasMany(ChatUsage::class);
+    }
+
     /**
      * Chats that never became an enquiry are anonymous browsing - there is no
      * reason to keep them past the retention window. A chat attached to an
@@ -75,7 +81,7 @@ class ChatConversation extends Model
     public function transcript(): string
     {
         return $this->messages
-            ->map(fn (ChatMessage $m) => ($m->role === ChatMessage::USER ? 'Visitor' : 'Assistant').': '.$m->content)
+            ->map(fn(ChatMessage $m) => ($m->role === ChatMessage::USER ? 'Visitor' : 'Assistant') . ': ' . $m->content)
             ->implode("\n\n");
     }
 }

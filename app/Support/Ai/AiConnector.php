@@ -28,11 +28,21 @@ interface AiConnector
      * @param  list<array{role: 'user'|'assistant', content: string}>  $messages  oldest first, ending on the visitor
      * @param  list<array{name: string, description: string, inputSchema: array<string, mixed>}>  $tools
      * @param  Closure(string $name, array<string, mixed> $input): string  $runTool
+     * @param  string|null  $session  stable id for the conversation, so the provider routes every round to the same
+     *                                endpoint and the cached prefix stays warm
      *
      * @throws AiUnavailable when the model cannot be reached or returns nothing
      */
-    public function converse(string $system, array $messages, array $tools, Closure $runTool): string;
+    public function converse(string $system, array $messages, array $tools, Closure $runTool, ?string $session = null): string;
 
     /** Tokens the last call used, summed over tool rounds; zero before any call. */
     public function lastTokens(): int;
+
+    /**
+     * What each request of the last call used, oldest round first. Empty before
+     * any call, and empty for connectors that cannot report it.
+     *
+     * @return list<array{round: int, model: string, prompt_tokens: int, completion_tokens: int, cached_tokens: int, cache_write_tokens: int, latency_ms: int, tools: list<string>}>
+     */
+    public function lastRequests(): array;
 }

@@ -234,14 +234,14 @@ class AssistantTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_the_model_is_offered_exactly_the_four_tools(): void
+    public function test_the_model_is_offered_exactly_the_three_tools(): void
     {
         $fake = $this->fake();
 
         $this->ask('Tell me about buying in Dubai')->assertOk();
 
         $this->assertSame(
-            ['search_properties', 'get_property', 'save_lead', 'record_unanswered_question'],
+            ['search_properties', 'get_property', 'save_lead'],
             array_column($fake->tools, 'name'),
         );
     }
@@ -398,16 +398,13 @@ class AssistantTest extends TestCase
     public function test_unanswered_questions_are_recorded_against_the_listing(): void
     {
         $property = $this->property();
-        $fake = $this->fake((new FakeAiConnector())
-            ->callsTool('record_unanswered_question', ['topic' => 'possession', 'question' => 'When can we close?'])
-            ->callsTool('record_unanswered_question', ['topic' => 'made_up_topic', 'question' => 'x']));
+        $this->fake(new FakeAiConnector('When you can close is not on the record - our team will confirm it.'));
 
         $this->ask('Tell me what I should check before buying', $property)->assertOk();
 
         $question = ChatConversation::sole()->unansweredQuestions()->sole();
         $this->assertSame('possession', $question->topic);
         $this->assertSame($property->id, $question->property_id);
-        $this->assertTrue($fake->toolRuns[1]['failed']);
     }
 
     public function test_an_unknown_tool_is_reported_back_to_the_model(): void

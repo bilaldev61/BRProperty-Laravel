@@ -24,7 +24,7 @@ class NullConnector implements AiConnector
         throw AiUnavailable::notConfigured();
     }
 
-    public function converse(string $system, array $messages, array $tools, Closure $runTool): string
+    public function converse(string $system, array $messages, array $tools, Closure $runTool, ?string $session = null): string
     {
         throw AiUnavailable::notConfigured();
     }
@@ -32,5 +32,10 @@ class NullConnector implements AiConnector
     public function lastTokens(): int
     {
         return 0;
+    }
+
+    public function lastRequests(): array
+    {
+        return [];
     }
 }

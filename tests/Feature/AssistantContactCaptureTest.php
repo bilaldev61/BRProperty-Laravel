@@ -187,11 +187,7 @@ class AssistantContactCaptureTest extends TestCase
     {
         // The model is told to ask, but a model that forgets must not lose the
         // lead: the ask is appended rather than left to its discretion.
-        $connector = $this->fake(new FakeAiConnector('That is not on the record - our team will confirm it.'));
-        $connector->callsTool('record_unanswered_question', [
-            'topic'    => 'financing',
-            'question' => 'Explain the payment plan',
-        ]);
+        $this->fake(new FakeAiConnector('That is not on the record - our team will confirm it.'));
 
         $reply = $this->ask('Explain the payment plan for this one', $this->property());
 
@@ -201,11 +197,7 @@ class AssistantContactCaptureTest extends TestCase
 
     public function test_a_model_that_already_asks_is_not_asked_twice(): void
     {
-        $connector = $this->fake(new FakeAiConnector('Our team will confirm that - what is your name and email?'));
-        $connector->callsTool('record_unanswered_question', [
-            'topic'    => 'possession',
-            'question' => 'Explain when I can move in',
-        ]);
+        $this->fake(new FakeAiConnector('Our team will confirm that - what is your name and email?'));
 
         $reply = $this->ask('Explain when I can move in', $this->property());
 

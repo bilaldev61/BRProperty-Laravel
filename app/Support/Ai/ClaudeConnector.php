@@ -19,6 +19,12 @@ class ClaudeConnector implements AiConnector
 
     private int $tokens = 0;
 
+    /** @var list<array<string, mixed>> one entry per request of the last call */
+    private array $requests = [];
+
+    /** @var array<string, int> what the single request inside call() used */
+    private array $lastUsage = [];
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model,
@@ -29,8 +35,7 @@ class ClaudeConnector implements AiConnector
         private readonly int $chatMaxTokens = 4096,
         private readonly int $maxToolRounds = 4,
         private ?Client $client = null,
-    ) {
-    }
+    ) {}
 
     public function isConfigured(): bool
     {
@@ -42,6 +47,11 @@ class ClaudeConnector implements AiConnector
         return $this->tokens;
     }
 
+    public function lastRequests(): array
+    {
+        return $this->requests;
+    }
+
     public function complete(string $system, string $prompt): string
     {
         if (! $this->isConfigured()) {
@@ -49,10 +59,13 @@ class ClaudeConnector implements AiConnector
         }
 
         $this->tokens = 0;
+        $this->requests = [];
 
         // `thinking` is deliberately omitted: Opus 5 runs adaptive thinking by
         // default, and maxTokens is the real ceiling on a short reply.
-        $message = $this->call(fn () => $this->client()->messages->create(
+        $started = microtime(true);
+
+        $message = $this->call(fn() => $this->client()->messages->create(
             maxTokens: $this->maxTokens,
             messages: [['role' => 'user', 'content' => $prompt]],
             model: $this->model,
@@ -60,19 +73,24 @@ class ClaudeConnector implements AiConnector
             requestOptions: ['timeout' => (float) $this->timeout],
         ));
 
+        $this->record(0, $this->model, $started);
+
         return $this->textOf($message) ?? throw AiUnavailable::emptyResponse();
     }
 
-    public function converse(string $system, array $messages, array $tools, Closure $runTool): string
+    public function converse(string $system, array $messages, array $tools, Closure $runTool, ?string $session = null): string
     {
         if (! $this->isConfigured()) {
             throw AiUnavailable::notConfigured();
         }
 
         $this->tokens = 0;
+        $this->requests = [];
 
         for ($round = 0; $round <= $this->maxToolRounds; $round++) {
-            $message = $this->call(fn () => $this->client()->beta->messages->create(
+            $started = microtime(true);
+
+            $message = $this->call(fn() => $this->client()->beta->messages->create(
                 maxTokens: $this->chatMaxTokens,
                 messages: $messages,
                 model: $this->chatModel,
@@ -90,6 +108,16 @@ class ClaudeConnector implements AiConnector
                 betas: [self::FALLBACK_BETA],
                 requestOptions: ['timeout' => (float) $this->timeout],
             ));
+
+            $names = $message->stopReason === 'tool_use'
+                ? collect($message->content)
+                ->filter(fn($block) => ($block->type ?? null) === 'tool_use')
+                ->map(fn($block) => (string) $block->name)
+                ->values()
+                ->all()
+                : [];
+
+            $this->record($round, $this->chatModel, $started, $names);
 
             if ($message->stopReason !== 'tool_use') {
                 return $this->textOf($message) ?? throw AiUnavailable::emptyResponse();
@@ -110,6 +138,21 @@ class ClaudeConnector implements AiConnector
         }
 
         throw AiUnavailable::callFailed('the model kept calling tools without answering');
+    }
+
+    /** @param list<string> $tools */
+    private function record(int $round, string $model, float $started, array $tools = []): void
+    {
+        $this->requests[] = [
+            'round'              => $round,
+            'model'              => $model,
+            'prompt_tokens'      => $this->lastUsage['prompt_tokens'] ?? 0,
+            'completion_tokens'  => $this->lastUsage['completion_tokens'] ?? 0,
+            'cached_tokens'      => $this->lastUsage['cached_tokens'] ?? 0,
+            'cache_write_tokens' => $this->lastUsage['cache_write_tokens'] ?? 0,
+            'latency_ms'         => (int) round((microtime(true) - $started) * 1000),
+            'tools'              => $tools,
+        ];
     }
 
     /** @return array<string, mixed> one tool_result block */
@@ -141,8 +184,20 @@ class ClaudeConnector implements AiConnector
 
         // Cached input still counts: it is billed, just at a tenth of the price.
         $usage = $message->usage;
-        $this->tokens += $usage->inputTokens + $usage->outputTokens
-            + ($usage->cacheReadInputTokens ?? 0) + ($usage->cacheCreationInputTokens ?? 0);
+
+        $input  = (int) $usage->inputTokens;
+        $output = (int) $usage->outputTokens;
+        $read   = (int) ($usage->cacheReadInputTokens ?? 0);
+        $write  = (int) ($usage->cacheCreationInputTokens ?? 0);
+
+        $this->tokens += $input + $output + $read + $write;
+
+        $this->lastUsage = [
+            'prompt_tokens'      => $input + $read + $write,
+            'completion_tokens'  => $output,
+            'cached_tokens'      => $read,
+            'cache_write_tokens' => $write,
+        ];
 
         // A safety decline comes back as a normal 200, so it has to be checked
         // before the content is read rather than caught as an error.
@@ -157,8 +212,8 @@ class ClaudeConnector implements AiConnector
     private function textOf(object $message): ?string
     {
         $text = collect($message->content)
-            ->filter(fn ($block) => ($block->type ?? null) === 'text')
-            ->map(fn ($block) => $block->text)
+            ->filter(fn($block) => ($block->type ?? null) === 'text')
+            ->map(fn($block) => $block->text)
             ->implode("\n\n");
 
         return filled(trim($text)) ? $text : null;

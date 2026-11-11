@@ -428,7 +428,7 @@ class AssistantAdversarialTest extends TestCase
             $this->postJson('/assistant', ['message' => $demand])->assertOk();
 
             $this->assertSame(
-                ['search_properties', 'get_property', 'save_lead', 'record_unanswered_question'],
+                ['search_properties', 'get_property', 'save_lead'],
                 array_column($fake->tools, 'name'),
                 'Injection tried to alter the offered tools.'
             );

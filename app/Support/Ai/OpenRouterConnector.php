@@ -20,6 +20,12 @@ class OpenRouterConnector implements AiConnector
 {
     private int $tokens = 0;
 
+    /** @var list<array<string, mixed>> one entry per request of the last call */
+    private array $requests = [];
+
+    /** @var array<string, int> what the single request inside call() used */
+    private array $lastUsage = [];
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model,
@@ -29,8 +35,7 @@ class OpenRouterConnector implements AiConnector
         private readonly int $timeout,
         private readonly int $maxToolRounds = 4,
         private readonly string $baseUrl = 'https://openrouter.ai/api/v1',
-    ) {
-    }
+    ) {}
 
     public function isConfigured(): bool
     {
@@ -42,6 +47,11 @@ class OpenRouterConnector implements AiConnector
         return $this->tokens;
     }
 
+    public function lastRequests(): array
+    {
+        return $this->requests;
+    }
+
     public function complete(string $system, string $prompt): string
     {
         if (! $this->isConfigured()) {
@@ -49,6 +59,9 @@ class OpenRouterConnector implements AiConnector
         }
 
         $this->tokens = 0;
+        $this->requests = [];
+
+        $started = microtime(true);
 
         $message = $this->call([
             'model'      => $this->model,
@@ -59,19 +72,22 @@ class OpenRouterConnector implements AiConnector
             ],
         ]);
 
+        $this->record(0, $this->model, $started, []);
+
         return $this->textOf($message) ?? throw AiUnavailable::emptyResponse();
     }
 
-    public function converse(string $system, array $messages, array $tools, Closure $runTool): string
+    public function converse(string $system, array $messages, array $tools, Closure $runTool, ?string $session = null): string
     {
         if (! $this->isConfigured()) {
             throw AiUnavailable::notConfigured();
         }
 
         $this->tokens = 0;
+        $this->requests = [];
 
         $messages = [['role' => 'system', 'content' => $system], ...$messages];
-        $tools = array_map(fn (array $tool) => [
+        $tools = array_map(fn(array $tool) => [
             'type'     => 'function',
             'function' => [
                 'name'        => $tool['name'],
@@ -81,14 +97,23 @@ class OpenRouterConnector implements AiConnector
         ], $tools);
 
         for ($round = 0; $round <= $this->maxToolRounds; $round++) {
+            $started = microtime(true);
+
             $message = $this->call(array_filter([
-                'model'      => $this->chatModel,
-                'max_tokens' => $this->chatMaxTokens,
-                'messages'   => $messages,
-                'tools'      => $tools ?: null,
+                'model'         => $this->chatModel,
+                'max_tokens'    => $this->chatMaxTokens,
+                'messages'      => $messages,
+                'tools'         => $tools ?: null,
+                'session_id'    => $session,
+                'cache_control' => $this->cacheControl(),
             ]));
 
             $calls = $message['tool_calls'] ?? [];
+
+            $this->record($round, $this->chatModel, $started, array_map(
+                fn(array $call) => (string) ($call['function']['name'] ?? ''),
+                $calls,
+            ));
 
             if ($calls === []) {
                 return $this->textOf($message) ?? throw AiUnavailable::emptyResponse();
@@ -110,6 +135,33 @@ class OpenRouterConnector implements AiConnector
         throw AiUnavailable::callFailed('the model kept calling tools without answering');
     }
 
+    /**
+     * A top-level breakpoint, for the one provider family that will not cache
+     * without being told. OpenAI, DeepSeek and Gemini cache the prefix on their
+     * own, and an explicit block is ignored there.
+     */
+    private function cacheControl(): ?array
+    {
+        return str_contains($this->chatModel, 'anthropic/') || str_contains($this->chatModel, 'claude')
+            ? ['type' => 'ephemeral']
+            : null;
+    }
+
+    /** @param list<string> $tools */
+    private function record(int $round, string $model, float $started, array $tools): void
+    {
+        $this->requests[] = [
+            'round'              => $round,
+            'model'              => $model,
+            'prompt_tokens'      => $this->lastUsage['prompt_tokens'] ?? 0,
+            'completion_tokens'  => $this->lastUsage['completion_tokens'] ?? 0,
+            'cached_tokens'      => $this->lastUsage['cached_tokens'] ?? 0,
+            'cache_write_tokens' => $this->lastUsage['cache_write_tokens'] ?? 0,
+            'latency_ms'         => (int) round((microtime(true) - $started) * 1000),
+            'tools'              => array_values(array_filter($tools)),
+        ];
+    }
+
     private function runTool(Closure $runTool, array $function): string
     {
         // Arguments arrive as a JSON string the model wrote - it can be broken.
@@ -123,7 +175,7 @@ class OpenRouterConnector implements AiConnector
             return $runTool((string) ($function['name'] ?? ''), $input);
         } catch (ToolFailed $e) {
             // No error flag in this API: say so in the result itself.
-            return 'Error: '.$e->getMessage();
+            return 'Error: ' . $e->getMessage();
         }
     }
 
@@ -145,7 +197,7 @@ class OpenRouterConnector implements AiConnector
             throw AiUnavailable::callFailed($this->reason($response));
         }
 
-        $this->tokens += (int) $response->json('usage.total_tokens', 0);
+        $this->readUsage($response);
 
         $choice = $response->json('choices.0');
 
@@ -158,6 +210,27 @@ class OpenRouterConnector implements AiConnector
         }
 
         return $choice['message'];
+    }
+
+    /**
+     * Cached input is billed at a fraction of the price, so the split matters:
+     * `cached_tokens` is the only evidence that the prefix is being reused.
+     */
+    private function readUsage(Response $response): void
+    {
+        $prompt     = (int) $response->json('usage.prompt_tokens', 0);
+        $completion = (int) $response->json('usage.completion_tokens', 0);
+        $cached     = (int) $response->json('usage.prompt_tokens_details.cached_tokens', 0);
+        $written    = (int) $response->json('usage.prompt_tokens_details.cache_write_tokens', 0);
+
+        $this->tokens += (int) $response->json('usage.total_tokens', $prompt + $completion);
+
+        $this->lastUsage = [
+            'prompt_tokens'      => $prompt,
+            'completion_tokens'  => $completion,
+            'cached_tokens'      => $cached,
+            'cache_write_tokens' => $written,
+        ];
     }
 
     private function reason(Response $response): string

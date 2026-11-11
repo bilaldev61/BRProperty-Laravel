@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One line of a chat, as plain text.
@@ -33,5 +34,11 @@ class ChatMessage extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(ChatConversation::class, 'chat_conversation_id');
+    }
+
+    /** One row per model request behind this reply - none for a rule reply. */
+    public function usage(): HasMany
+    {
+        return $this->hasMany(ChatUsage::class)->orderBy('round');
     }
 }

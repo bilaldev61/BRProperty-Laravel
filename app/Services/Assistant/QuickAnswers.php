@@ -126,6 +126,19 @@ class QuickAnswers
 
     private const OFF_TOPIC = '/\b(weather|recipe|cricket|football|movie|film|song|joke|poem|story|code|coding|python|javascript|php|homework|essay|assignment|maths?|translate|politics|election|news|chatgpt|openai|write me)\b/';
 
+    /**
+     * A hello or a thanks on its own - small talk rather than a question.
+     *
+     * Used by the repeat guard: a visitor saying hello twice is not stuck on an
+     * answer, so their second hello still gets a hello back.
+     */
+    public function isSmallTalk(string $message): bool
+    {
+        $text = $this->normalise($message);
+
+        return (bool) preg_match(self::GREETING, $text) || (bool) preg_match(self::THANKS, $text);
+    }
+
     /** @return array{text: string, kind: string}|null */
     public function answer(ChatConversation $conversation, string $message): ?array
     {
@@ -539,7 +552,7 @@ class QuickAnswers
 
         return $this->reply(
             "I'm the website assistant for {$agency} - an AI tool that answers from our listing records. " .
-            'For anything that needs a human, ' . $agent . ' and the team handle the real side.',
+                'For anything that needs a human, ' . $agent . ' and the team handle the real side.',
             'identity',
         );
     }

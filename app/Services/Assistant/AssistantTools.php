@@ -4,7 +4,6 @@ namespace App\Services\Assistant;
 
 use App\Jobs\SendEnquiryConfirmation;
 use App\Models\ChatConversation;
-use App\Models\ChatUnansweredQuestion;
 use App\Models\Enquiry;
 use App\Models\Property;
 use App\Services\Listings\PropertySearch;
@@ -12,16 +11,15 @@ use App\Support\Ai\ToolFailed;
 use App\Support\PropertyFacts;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 
 /**
  * What the public assistant is allowed to do, and the code that does it.
  *
- * Four tools, deliberately narrow. Two only read, and only ever see published
+ * Three tools, deliberately narrow. Two only read, and only ever see published
  * listings - an unpublished or draft property does not exist as far as the
- * assistant is concerned. Two write, and each can only add a row the agent will
- * review: a lead in the inbox, or a question for the report. Nothing here can
- * change or reveal anything else, whatever a visitor types.
+ * assistant is concerned. One writes, and can only add a row the agent will
+ * review: a lead in the inbox. Nothing here can change or reveal anything else,
+ * whatever a visitor types.
  *
  * Every input is validated here rather than trusted to the schema: the model
  * writes these arguments, and the model is talking to the public.
@@ -42,14 +40,6 @@ class AssistantTools
      *                                               (the enquiry auto-reply); the writing tools then refuse
      */
     public function __construct(private readonly ?ChatConversation $conversation = null) {}
-
-    /** Questions filed in this turn, so the reply can be made to offer a way back. */
-    private int $recorded = 0;
-
-    public function recordedUnanswered(): bool
-    {
-        return $this->recorded > 0;
-    }
 
     /** @return list<array{name: string, description: string, inputSchema: array<string, mixed>}> */
     public static function readOnlyDefinitions(): array
@@ -116,23 +106,6 @@ class AssistantTools
                     'additionalProperties' => false,
                 ],
             ],
-            [
-                'name' => 'record_unanswered_question',
-                'description' => 'REQUIRED before you tell a visitor the agent will confirm something. Logs each question '
-                    . 'the listing facts could not answer (price flexibility, possession, paperwork, dues, anything not '
-                    . 'recorded) so the agent can add it to the listing. Call it once per unanswered question - if they '
-                    . 'asked two things you cannot answer, call it twice - then write your reply.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'topic' => ['type' => 'string', 'enum' => array_keys(ChatUnansweredQuestion::TOPICS)],
-                        'question' => ['type' => 'string', 'description' => 'The question in a few words, in English.'],
-                        'property_slug' => ['type' => 'string', 'description' => 'The listing it was about, if any.'],
-                    ],
-                    'required' => ['topic', 'question'],
-                    'additionalProperties' => false,
-                ],
-            ],
         ];
     }
 
@@ -144,11 +117,10 @@ class AssistantTools
         }
 
         return match ($name) {
-            'search_properties'          => $this->searchProperties($input),
-            'get_property'               => $this->getProperty($input),
-            'save_lead'                  => $this->saveLead($input),
-            'record_unanswered_question' => $this->recordQuestion($input),
-            default                      => throw new ToolFailed("There is no tool called {$name}."),
+            'search_properties' => $this->searchProperties($input),
+            'get_property'      => $this->getProperty($input),
+            'save_lead'         => $this->saveLead($input),
+            default             => throw new ToolFailed("There is no tool called {$name}."),
         };
     }
 
@@ -215,27 +187,6 @@ class AssistantTools
 
         return 'Saved. The agent now has their details and this chat. Tell the visitor that '
             . config('agent.name') . ' will be in touch, without promising a time.';
-    }
-
-    private function recordQuestion(array $input): string
-    {
-        $data = $this->validate($input, [
-            'topic'         => ['required', Rule::in(array_keys(ChatUnansweredQuestion::TOPICS))],
-            'question'      => ['required', 'string', 'max:500'],
-            'property_slug' => ['nullable', 'string', 'max:255'],
-        ]);
-
-        if ($this->conversation->unansweredQuestions()->count() < self::MAX_QUESTIONS_PER_CHAT) {
-            $this->conversation->unansweredQuestions()->create([
-                'topic'       => $data['topic'],
-                'question'    => $data['question'],
-                'property_id' => ($this->findProperty($data['property_slug'] ?? null) ?? $this->conversation->property)?->id,
-            ]);
-
-            $this->recorded++;
-        }
-
-        return 'Noted for the agent. Tell the visitor the agent will confirm this, and ask for their name and email so there is somewhere to reply.';
     }
 
     private function findProperty(?string $slug): ?Property
