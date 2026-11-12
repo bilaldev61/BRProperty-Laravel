@@ -36,6 +36,7 @@ class AppServiceProvider extends ServiceProvider
                 chatMaxTokens: (int) config('ai.openrouter.chat_max_tokens'),
                 timeout: (int) config('ai.timeout'),
                 maxToolRounds: (int) config('ai.chat.max_tool_rounds'),
+                chatEffort: (string) config('ai.chat.effort'),
                 baseUrl: (string) config('ai.openrouter.base_url'),
             ),
             config('ai.driver') === 'anthropic' && filled(config('ai.key')) => new ClaudeConnector(

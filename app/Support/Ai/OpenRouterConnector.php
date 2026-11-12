@@ -34,6 +34,7 @@ class OpenRouterConnector implements AiConnector
         private readonly int $chatMaxTokens,
         private readonly int $timeout,
         private readonly int $maxToolRounds = 4,
+        private readonly string $chatEffort = 'low',
         private readonly string $baseUrl = 'https://openrouter.ai/api/v1',
     ) {}
 
@@ -106,6 +107,9 @@ class OpenRouterConnector implements AiConnector
                 'tools'         => $tools ?: null,
                 'session_id'    => $session,
                 'cache_control' => $this->cacheControl(),
+                // Reasoning models think by default, and every hidden thought
+                // is billed reply tokens on every round. Effort is the brake.
+                'reasoning_effort' => $this->chatEffort ?: null,
             ]));
 
             $calls = $message['tool_calls'] ?? [];

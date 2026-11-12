@@ -20,7 +20,7 @@ class OpenRouterConnectorTest extends TestCase
 {
     private const URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-    private function connector(int $maxToolRounds = 4): OpenRouterConnector
+    private function connector(int $maxToolRounds = 4, string $chatEffort = 'low'): OpenRouterConnector
     {
         return new OpenRouterConnector(
             apiKey: 'sk-or-test',
@@ -30,6 +30,7 @@ class OpenRouterConnectorTest extends TestCase
             chatMaxTokens: 2048,
             timeout: 5,
             maxToolRounds: $maxToolRounds,
+            chatEffort: $chatEffort,
         );
     }
 
@@ -50,23 +51,28 @@ class OpenRouterConnectorTest extends TestCase
 
     public function test_a_tool_round_trip_goes_over_the_wire_correctly(): void
     {
-        Http::fake([self::URL => Http::sequence()
-            ->push(self::reply(['content' => null, 'tool_calls' => [self::toolCall('call_1', 'search_properties', '{"area":"DHA"}')]], 'tool_calls'))
-            ->push(self::reply(['content' => 'Found one in DHA.'])),
+        Http::fake([
+            self::URL => Http::sequence()
+                ->push(self::reply(['content' => null, 'tool_calls' => [self::toolCall('call_1', 'search_properties', '{"area":"DHA"}')]], 'tool_calls'))
+                ->push(self::reply(['content' => 'Found one in DHA.'])),
         ]);
 
         $seen = [];
-        $reply = $this->connector()->converse('SYSTEM', [['role' => 'user', 'content' => 'Houses in DHA?']], self::tools(),
+        $reply = $this->connector()->converse(
+            'SYSTEM',
+            [['role' => 'user', 'content' => 'Houses in DHA?']],
+            self::tools(),
             function (string $name, array $input) use (&$seen) {
                 $seen[] = [$name, $input];
 
                 return '{"total_matches":1}';
-            });
+            }
+        );
 
         $this->assertSame('Found one in DHA.', $reply);
         $this->assertSame([['search_properties', ['area' => 'DHA']]], $seen);
 
-        $requests = Http::recorded()->map(fn ($pair) => $pair[0]);
+        $requests = Http::recorded()->map(fn($pair) => $pair[0]);
         $this->assertCount(2, $requests);
 
         /** @var Request $first */
@@ -86,16 +92,21 @@ class OpenRouterConnectorTest extends TestCase
 
     public function test_a_failed_tool_or_broken_arguments_are_reported_to_the_model(): void
     {
-        Http::fake([self::URL => Http::sequence()
-            ->push(self::reply(['content' => null, 'tool_calls' => [
-                self::toolCall('call_1', 'get_property', '{"slug":"nope"}'),
-                self::toolCall('call_2', 'get_property', '{not json'),
-            ]], 'tool_calls'))
-            ->push(self::reply(['content' => 'Sorry, I could not find it.'])),
+        Http::fake([
+            self::URL => Http::sequence()
+                ->push(self::reply(['content' => null, 'tool_calls' => [
+                    self::toolCall('call_1', 'get_property', '{"slug":"nope"}'),
+                    self::toolCall('call_2', 'get_property', '{not json'),
+                ]], 'tool_calls'))
+                ->push(self::reply(['content' => 'Sorry, I could not find it.'])),
         ]);
 
-        $this->connector()->converse('S', [['role' => 'user', 'content' => 'Hi']], self::tools(),
-            fn () => throw new ToolFailed('No such listing.'));
+        $this->connector()->converse(
+            'S',
+            [['role' => 'user', 'content' => 'Hi']],
+            self::tools(),
+            fn() => throw new ToolFailed('No such listing.')
+        );
 
         $messages = Http::recorded()[1][0]['messages'];
         $this->assertSame('Error: No such listing.', $messages[3]['content']);
@@ -108,9 +119,70 @@ class OpenRouterConnectorTest extends TestCase
 
         $this->assertSame('Draft.', $this->connector()->complete('S', 'Prompt'));
 
-        Http::assertSent(fn (Request $r) => $r['model'] === 'openai/gpt-4o'
+        Http::assertSent(fn(Request $r) => $r['model'] === 'openai/gpt-4o'
             && $r['messages'][1] === ['role' => 'user', 'content' => 'Prompt']
-            && ! isset($r['tools']));
+            && ! isset($r['tools'])
+            && ! isset($r['reasoning_effort']));
+    }
+
+    public function test_the_chat_effort_rides_on_every_round(): void
+    {
+        Http::fake([
+            self::URL => Http::sequence()
+                ->push(self::reply(['content' => null, 'tool_calls' => [self::toolCall('call_1', 'search_properties', '{}')]], 'tool_calls'))
+                ->push(self::reply(['content' => 'Found one.'])),
+        ]);
+
+        $this->connector(chatEffort: 'medium')->converse('S', [['role' => 'user', 'content' => 'Hi']], self::tools(), fn() => '{}');
+
+        // Hidden reasoning is billed on every round, so the brake must be too.
+        $requests = Http::recorded()->map(fn($pair) => $pair[0]);
+        $this->assertCount(2, $requests);
+        $this->assertSame('medium', $requests[0]['reasoning_effort']);
+        $this->assertSame('medium', $requests[1]['reasoning_effort']);
+    }
+
+    public function test_a_blank_effort_sends_no_reasoning_field(): void
+    {
+        Http::fake([self::URL => Http::response(self::reply(['content' => 'Hello.']))]);
+
+        $this->connector(chatEffort: '')->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => '');
+
+        Http::assertSent(fn(Request $r) => ! isset($r['reasoning_effort']));
+    }
+
+    public function test_the_configured_effort_reaches_the_resolved_connector(): void
+    {
+        config([
+            'ai.driver' => 'openrouter',
+            'ai.openrouter.key' => 'sk-or-x',
+            'ai.chat.effort' => 'high',
+        ]);
+        Http::fake([self::URL => Http::response(self::reply(['content' => 'Hello.']))]);
+
+        $this->resolve()->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => '');
+
+        Http::assertSent(fn(Request $r) => $r['reasoning_effort'] === 'high');
+    }
+
+    public function test_the_configured_tool_round_cap_reaches_the_resolved_connector(): void
+    {
+        config([
+            'ai.driver' => 'openrouter',
+            'ai.openrouter.key' => 'sk-or-x',
+            'ai.chat.max_tool_rounds' => 1,
+        ]);
+        Http::fake([self::URL => Http::response(self::reply(['content' => null, 'tool_calls' => [
+            self::toolCall('call_x', 'search_properties', '{}'),
+        ]], 'tool_calls'))]);
+
+        try {
+            $this->resolve()->converse('S', [['role' => 'user', 'content' => 'Hi']], self::tools(), fn() => '[]');
+            $this->fail('Expected the configured cap to cut the loop off.');
+        } catch (AiUnavailable) {
+            // Cap 1 = the first call plus one tool round, then the outage.
+            Http::assertSentCount(2);
+        }
     }
 
     public function test_an_http_error_is_an_outage(): void
@@ -135,7 +207,7 @@ class OpenRouterConnectorTest extends TestCase
         Http::fake([self::URL => Http::response(self::reply(['content' => '']))]);
 
         $this->expectException(AiUnavailable::class);
-        $this->connector()->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn () => '');
+        $this->connector()->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => '');
     }
 
     public function test_a_model_that_never_stops_calling_tools_is_cut_off(): void
@@ -145,7 +217,7 @@ class OpenRouterConnectorTest extends TestCase
         ]], 'tool_calls'))]);
 
         try {
-            $this->connector(maxToolRounds: 2)->converse('S', [['role' => 'user', 'content' => 'Hi']], self::tools(), fn () => '[]');
+            $this->connector(maxToolRounds: 2)->converse('S', [['role' => 'user', 'content' => 'Hi']], self::tools(), fn() => '[]');
             $this->fail('Expected the loop to be cut off.');
         } catch (AiUnavailable) {
             Http::assertSentCount(3);

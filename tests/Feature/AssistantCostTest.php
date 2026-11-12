@@ -99,6 +99,20 @@ class AssistantCostTest extends TestCase
         $this->assertStringContainsString('Al Barsha', substr($prompt, $marker));
     }
 
+    public function test_the_no_second_search_rule_sits_in_the_cacheable_prefix(): void
+    {
+        $fake = $this->fake();
+
+        $this->ask('Tell me about buying in Dubai')->assertOk();
+
+        $prompt = (string) $fake->system;
+        $marker = (int) strpos($prompt, 'CURRENT DATA');
+
+        // An empty search answered twice is a whole extra billed round; the
+        // instruction that prevents it must be fixed text, not live data.
+        $this->assertStringContainsString('Do not run another search on your own', substr($prompt, 0, $marker));
+    }
+
     /*
     |--------------------------------------------------------------------------
     | What each request cost

@@ -102,7 +102,11 @@ class ClaudeConnector implements AiConnector
                 // grounds, the API retries it on a fallback model in the same
                 // call rather than leaving the visitor with nothing.
                 fallbacks: 'default',
-                outputConfig: ['effort' => $this->chatEffort],
+                // 'none' is an OpenRouter-only value; Anthropic has no such
+                // effort, so it keeps its default rather than a 400.
+                outputConfig: in_array($this->chatEffort, ['low', 'medium', 'high'], true)
+                    ? ['effort' => $this->chatEffort]
+                    : null,
                 system: $system,
                 tools: $tools,
                 betas: [self::FALLBACK_BETA],

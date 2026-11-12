@@ -33,6 +33,8 @@ class SiteSettings
         'ai.chat.daily_limit',
         'ai.chat.model_enabled',
         'ai.chat.quick_answers',
+        'ai.chat.effort',
+        'ai.chat.max_tool_rounds',
     ];
 
     /** @return array<string, mixed> dot key => value */

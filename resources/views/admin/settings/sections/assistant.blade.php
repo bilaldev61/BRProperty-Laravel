@@ -25,6 +25,22 @@
             <input id="daily_limit" name="daily_limit" type="number" min="50" max="100000" step="10" class="input"
                 value="{{ old('daily_limit', $chat['daily_limit']) }}" required>
         </x-field>
+
+        <x-field label="Thinking effort" name="effort" required
+            hint="How hard the model thinks before replying. None is fastest and cheapest on models that show their thinking; raise it only if answers feel shallow.">
+            <select id="effort" name="effort" class="input">
+                <option value="none" @selected(old('effort', $chat['effort'])==='none' )>None - answer directly</option>
+                <option value="low" @selected(old('effort', $chat['effort'])==='low' )>Low</option>
+                <option value="medium" @selected(old('effort', $chat['effort'])==='medium' )>Medium</option>
+                <option value="high" @selected(old('effort', $chat['effort'])==='high' )>High</option>
+            </select>
+        </x-field>
+
+        <x-field label="Max tool rounds" name="max_tool_rounds" required
+            hint="How many searches the model may chain before it must answer. Every round re-sends the whole prompt, so this caps the cost of one reply. Lower is cheaper; a reply that needs more searches is cut off and falls back to the rule layers.">
+            <input id="max_tool_rounds" name="max_tool_rounds" type="number" min="1" max="4" step="1" class="input"
+                value="{{ old('max_tool_rounds', $chat['max_tool_rounds']) }}" required>
+        </x-field>
     </div>
 
     <div class="space-y-3 border-t border-ink-100 pt-4">
@@ -74,6 +90,14 @@
             <div class="flex justify-between gap-4 border-b border-ink-100 pb-1.5">
                 <dt class="text-ink-500">Rules answer first</dt>
                 <dd class="font-semibold text-ink-900">{{ $chat['quick_answers'] ? 'yes' : 'no' }}</dd>
+            </div>
+            <div class="flex justify-between gap-4 border-b border-ink-100 pb-1.5">
+                <dt class="text-ink-500">Thinking effort</dt>
+                <dd class="font-semibold text-ink-900">{{ $chat['effort'] }}</dd>
+            </div>
+            <div class="flex justify-between gap-4 border-b border-ink-100 pb-1.5">
+                <dt class="text-ink-500">Tool rounds per reply</dt>
+                <dd class="font-semibold text-ink-900">up to {{ $chat['max_tool_rounds'] }}</dd>
             </div>
         </dl>
         <p class="mt-3 text-xs text-ink-400">Save to update this preview.</p>

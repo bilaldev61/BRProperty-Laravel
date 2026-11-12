@@ -26,13 +26,11 @@ class ClaudeConnectorTest extends TestCase
     private array $requests = [];
 
     /** @param list<array<string, mixed>> $replies API response bodies, in order */
-    private function connector(array $replies, int $maxToolRounds = 4): ClaudeConnector
+    private function connector(array $replies, int $maxToolRounds = 4, string $chatEffort = 'low'): ClaudeConnector
     {
         $transport = new class($replies, $this->requests) implements ClientInterface
         {
-            public function __construct(private array $replies, private array &$requests)
-            {
-            }
+            public function __construct(private array $replies, private array &$requests) {}
 
             public function sendRequest(RequestInterface $request): ResponseInterface
             {
@@ -49,7 +47,7 @@ class ClaudeConnectorTest extends TestCase
             maxTokens: 1024,
             timeout: 5,
             chatModel: 'claude-opus-5-5',
-            chatEffort: 'low',
+            chatEffort: $chatEffort,
             chatMaxTokens: 4096,
             maxToolRounds: $maxToolRounds,
             client: new Client(apiKey: 'test-key', requestOptions: ['transporter' => $transport, 'maxRetries' => 0]),
@@ -59,8 +57,12 @@ class ClaudeConnectorTest extends TestCase
     private static function message(string $stopReason, array $content): array
     {
         return [
-            'id' => 'msg_'.uniqid(), 'type' => 'message', 'role' => 'assistant',
-            'model' => 'claude-opus-5-5', 'stop_reason' => $stopReason, 'stop_sequence' => null,
+            'id' => 'msg_' . uniqid(),
+            'type' => 'message',
+            'role' => 'assistant',
+            'model' => 'claude-opus-5-5',
+            'stop_reason' => $stopReason,
+            'stop_sequence' => null,
             'content' => $content,
             'usage' => ['input_tokens' => 10, 'output_tokens' => 10],
         ];
@@ -119,6 +121,19 @@ class ClaudeConnectorTest extends TestCase
         ], $second['messages'][2]);
     }
 
+    public function test_a_none_effort_leaves_anthropic_at_its_default(): void
+    {
+        $connector = $this->connector(
+            [self::message('end_turn', [['type' => 'text', 'text' => 'Hi.']])],
+            chatEffort: 'none',
+        );
+
+        $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => '');
+
+        // 'none' only exists on OpenRouter; sending it to Anthropic would 400.
+        $this->assertArrayNotHasKey('output_config', $this->body(0));
+    }
+
     public function test_a_failed_tool_is_returned_as_an_error_result(): void
     {
         $connector = $this->connector([
@@ -126,7 +141,7 @@ class ClaudeConnectorTest extends TestCase
             self::message('end_turn', [['type' => 'text', 'text' => 'I could not find that one.']]),
         ]);
 
-        $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn () => throw new ToolFailed('No such listing.'));
+        $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => throw new ToolFailed('No such listing.'));
 
         $result = $this->body(1)['messages'][2]['content'][0];
         $this->assertSame('No such listing.', $result['content']);
@@ -138,7 +153,7 @@ class ClaudeConnectorTest extends TestCase
         $connector = $this->connector([self::message('refusal', [])]);
 
         $this->expectException(AiUnavailable::class);
-        $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn () => '');
+        $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => '');
     }
 
     public function test_a_model_that_never_stops_calling_tools_is_cut_off(): void
@@ -147,7 +162,7 @@ class ClaudeConnectorTest extends TestCase
         $connector = $this->connector([$loop, $loop, $loop], maxToolRounds: 2);
 
         try {
-            $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn () => '[]');
+            $connector->converse('S', [['role' => 'user', 'content' => 'Hi']], [], fn() => '[]');
             $this->fail('Expected the loop to be cut off.');
         } catch (AiUnavailable) {
             $this->assertCount(3, $this->requests);

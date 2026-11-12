@@ -241,19 +241,23 @@ class SettingsController extends Controller
     private function assistant(Request $request): array
     {
         $data = $request->validate([
-            'history'        => ['required', 'integer', 'min:4', 'max:24'],
-            'max_messages'   => ['required', 'integer', 'min:5', 'max:100'],
-            'retention_days' => ['required', 'integer', 'min:7', 'max:730'],
-            'daily_limit'    => ['required', 'integer', 'min:50', 'max:100000'],
+            'history'         => ['required', 'integer', 'min:4', 'max:24'],
+            'max_messages'    => ['required', 'integer', 'min:5', 'max:100'],
+            'retention_days'  => ['required', 'integer', 'min:7', 'max:730'],
+            'daily_limit'     => ['required', 'integer', 'min:50', 'max:100000'],
+            'effort'          => ['required', Rule::in(['none', 'low', 'medium', 'high'])],
+            'max_tool_rounds' => ['required', 'integer', 'min:1', 'max:4'],
         ]);
 
         return [
-            'ai.chat.history'        => (int) $data['history'],
-            'ai.chat.max_messages'   => (int) $data['max_messages'],
-            'ai.chat.retention_days' => (int) $data['retention_days'],
-            'ai.chat.daily_limit'    => (int) $data['daily_limit'],
-            'ai.chat.model_enabled'  => $request->boolean('model_enabled'),
-            'ai.chat.quick_answers'  => $request->boolean('quick_answers'),
+            'ai.chat.history'         => (int) $data['history'],
+            'ai.chat.max_messages'    => (int) $data['max_messages'],
+            'ai.chat.retention_days'  => (int) $data['retention_days'],
+            'ai.chat.daily_limit'     => (int) $data['daily_limit'],
+            'ai.chat.model_enabled'   => $request->boolean('model_enabled'),
+            'ai.chat.quick_answers'   => $request->boolean('quick_answers'),
+            'ai.chat.effort'          => $data['effort'],
+            'ai.chat.max_tool_rounds' => (int) $data['max_tool_rounds'],
         ];
     }
 

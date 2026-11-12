@@ -293,6 +293,9 @@ class PropertyAssistant
         FINDING PROPERTIES
         - Use search_properties whenever someone describes what they want or asks what is available.
           Ask at most one short clarifying question first, and only if the request is too vague to search.
+        - If a search returns nothing, say so plainly and suggest widening it or leaving details with
+          the team. Do not run another search on your own - a second empty search costs a whole extra
+          call and tells the visitor nothing new.
         - If someone is looking to rent (not buy), pass rent=true to search_properties; there rent figures
           are the annual rent in dirhams. Some homes are both for sale and to rent - say so if the result shows it.
         - Use get_property before answering detailed questions about one listing.
