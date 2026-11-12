@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\CatalogueCache;
 use App\Support\Format;
 use Illuminate\Support\Str;
 
@@ -46,6 +47,11 @@ class Property extends Model
                 $property->slug = static::uniqueSlug($source);
             }
         });
+
+        // The cached catalogue reads derive from these rows, so every write
+        // starts them cold: a sold home is gone from the next request.
+        static::saved(fn() => app(CatalogueCache::class)->flush());
+        static::deleted(fn() => app(CatalogueCache::class)->flush());
     }
 
     public static function uniqueSlug(string $source, ?int $ignoreId = null): string

@@ -8,6 +8,8 @@ use App\Support\Ai\AiConnector;
 use App\Support\Ai\ClaudeConnector;
 use App\Support\Ai\NullConnector;
 use App\Support\Ai\OpenRouterConnector;
+use App\Support\CatalogueCache;
+use App\Support\PublishedProperty;
 use App\Support\SiteSettings;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -20,6 +22,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(SiteSettings::class);
+        $this->app->singleton(PublishedProperty::class);
+        $this->app->singleton(CatalogueCache::class);
 
         // No API key means no AI, and the app says so honestly rather than
         // failing at the point of use. Tests bind their own fake over this.

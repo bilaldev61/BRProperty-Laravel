@@ -3,8 +3,8 @@
 namespace App\Services\Assistant;
 
 use App\Models\ChatConversation;
-use App\Models\Property;
 use App\Services\Listings\PropertySearch;
+use App\Support\CatalogueCache;
 use App\Support\Format;
 use Illuminate\Support\Str;
 
@@ -278,7 +278,7 @@ class RulesSearch
      */
     private function matchingArea(string $text): ?string
     {
-        $suburbs = Property::published()->distinct()->pluck('suburb')->filter()->values();
+        $suburbs = app(CatalogueCache::class)->suburbs();
 
         foreach ($suburbs->sortByDesc(fn($s) => mb_strlen((string) $s)) as $suburb) {
             if (mb_stripos($text, (string) $suburb) !== false) {

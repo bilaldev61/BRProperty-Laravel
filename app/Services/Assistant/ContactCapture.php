@@ -142,11 +142,15 @@ class ContactCapture
             return 'Asked in the assistant chat: ' . $asked;
         }
 
-        $last = $conversation->messages()
+        $conversation->loadMissing('messages');
+
+        // The newest user message is the one carrying the address; the question
+        // that led here is the one before it.
+        $last = $conversation->messages
             ->where('role', ChatMessage::USER)
-            ->reorder('id', 'desc')
+            ->sortByDesc('id')
             ->skip(1)
-            ->value('content');
+            ->first()?->content;
 
         return filled($last)
             ? 'Asked in the assistant chat: ' . Str::limit($last, 400)

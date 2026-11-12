@@ -48,10 +48,9 @@ class SiteSettings
                 return Setting::pluck('value', 'key')->all();
             });
         } catch (Throwable) {
-            // The cache is stored in the database too, so with no database at
-            // all - `composer install` on a fresh clone or in CI boots the app
-            // before one exists - even reading it throws. Overrides are
-            // optional by design: fall back to the config file's defaults.
+            // Overrides are optional by design: on a fresh clone or in CI the
+            // app boots before a database exists, so even reading them throws.
+            // Fall back to the config file's defaults.
             return [];
         }
     }

@@ -202,7 +202,9 @@ class QuickAnswers
 
         // Distress anywhere in the thread stands the gate down: a later message
         // in an emergency conversation is not a new off-topic visitor.
-        foreach ($conversation->messages()->pluck('content') as $said) {
+        $conversation->loadMissing('messages');
+
+        foreach ($conversation->messages->pluck('content') as $said) {
             if (preg_match(self::DISTRESS, $this->normalise((string) $said))) {
                 return false;
             }
@@ -444,10 +446,12 @@ class QuickAnswers
             return null;
         }
 
-        $lastReply = $conversation->messages()
+        $conversation->loadMissing('messages');
+
+        $lastReply = $conversation->messages
             ->where('role', 'assistant')
-            ->reorder('id', 'desc')
-            ->value('content');
+            ->sortByDesc('id')
+            ->first()?->content;
 
         $pointedElsewhere = $lastReply
             && str_contains($lastReply, '/properties/')

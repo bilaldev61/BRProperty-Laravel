@@ -8,6 +8,7 @@ use App\Models\Property;
 use App\Services\Assistant\PropertyAssistant;
 use App\Support\Ai\AiUnavailable;
 use App\Support\AssistantSuggestions;
+use App\Support\PublishedProperty;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -73,18 +74,14 @@ class AssistantController extends Controller
     /** The listing the chat is about. Unpublished listings are simply not one. */
     private function property(Request $request): ?Property
     {
-        $slug = $request->input('property');
-
-        return filled($slug) && is_string($slug)
-            ? Property::published()->where('slug', $slug)->first()
-            : null;
+        return app(PublishedProperty::class)->bySlug($request->input('property'));
     }
 
     private function conversation(Request $request, ?Property $property): ?ChatConversation
     {
         $token = $request->session()->get($this->sessionKey($property));
 
-        return $token ? ChatConversation::with('messages')->where('token', $token)->first() : null;
+        return $token ? ChatConversation::with('messages', 'property')->where('token', $token)->first() : null;
     }
 
     private function start(Request $request, ?Property $property): ChatConversation

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\CatalogueCache;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +14,13 @@ class PropertyImage extends Model
     use HasFactory;
 
     protected $guarded = [];
+
+    protected static function booted(): void
+    {
+        // A new or removed photo changes the cached home cards.
+        static::saved(fn() => app(CatalogueCache::class)->flush());
+        static::deleted(fn() => app(CatalogueCache::class)->flush());
+    }
 
     public function property(): BelongsTo
     {

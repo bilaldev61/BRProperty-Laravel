@@ -7,6 +7,7 @@ use App\Models\Enquiry;
 use App\Models\Property;
 use App\Models\Testimonial;
 use App\Models\User;
+use App\Support\CatalogueCache;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -30,5 +31,9 @@ class DatabaseSeeder extends Seeder
             TestimonialSeeder::class,
             EnquirySeeder::class,
         ]);
+
+        // Two seeders write with mass update/delete, which skip model events,
+        // so the cached catalogue reads are cleared here rather than by hook.
+        app(CatalogueCache::class)->flush();
     }
 }

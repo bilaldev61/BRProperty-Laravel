@@ -7,6 +7,7 @@ use App\Models\ChatMessage;
 use App\Models\Property;
 use App\Support\Ai\AiConnector;
 use App\Support\Ai\AiUnavailable;
+use App\Support\CatalogueCache;
 use App\Support\PropertyFacts;
 
 /**
@@ -58,6 +59,11 @@ class PropertyAssistant
   {
     $conversation->messages()->create(['role' => ChatMessage::USER, 'content' => $message]);
     $conversation->increment('visitor_messages', 1, ['last_message_at' => now()]);
+
+    // One read of the thread for the whole turn: the repeat guard, the distress
+    // scan, the focus check and the history window all work off this collection
+    // instead of each re-selecting the same rows.
+    $conversation->load('messages');
 
     $tokens = null;
     $usage = [];
@@ -183,7 +189,7 @@ class PropertyAssistant
     }
 
     // Newest first: this message, the reply it followed, the message before it.
-    $recent = $conversation->messages()->reorder('id', 'desc')->take(3)->get();
+    $recent = $conversation->messages->sortByDesc('id')->take(3)->values();
 
     if (
       $recent->count() < 3
@@ -224,10 +230,9 @@ class PropertyAssistant
   private function history(ChatConversation $conversation): array
   {
     // The relation sorts oldest-first; take the newest, then put them back in order.
-    $messages = $conversation->messages()
-      ->reorder('id', 'desc')
+    $messages = $conversation->messages
+      ->sortByDesc('id')
       ->take((int) config('ai.chat.history'))
-      ->get()
       ->reverse()
       ->map(fn(ChatMessage $m) => ['role' => $m->role, 'content' => $m->content])
       ->values();
@@ -252,7 +257,7 @@ class PropertyAssistant
     $phone   = config('agent.phone');
     $wa      = 'https://wa.me/' . config('agent.whatsapp');
     $covered = implode(', ', config('agent.service_areas', []));
-    $listed  = Property::published()->forSale()->distinct()->orderBy('suburb')->pluck('suburb')->implode(', ') ?: 'none at the moment';
+    $listed  = app(CatalogueCache::class)->saleSuburbs() ?: 'none at the moment';
     $types   = collect(config('agent.property_types'))->map(fn($label, $key) => "{$key} ({$label})")->implode(', ');
 
     $page = $this->pageContext($conversation->property);

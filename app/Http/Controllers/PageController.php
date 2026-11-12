@@ -3,27 +3,28 @@
 namespace App\Http\Controllers;
 
 use App\Models\Property;
-use App\Models\Testimonial;
 use App\Support\Blog;
+use App\Support\CatalogueCache;
 
 class PageController extends Controller
 {
     public function home()
     {
+        $catalogue = app(CatalogueCache::class);
+        $home = $catalogue->home();
+
         return view('pages.home', [
-            'featured' => Property::published()->forSale()->with('images')
-                ->orderByDesc('is_featured')->orderByDesc('created_at')->take(6)->get(),
-            'recentlySold' => Property::published()->sold()->with('images')
-                ->orderByDesc('sold_at')->take(3)->get(),
-            'testimonials' => Testimonial::published()->where('is_featured', true)->take(3)->get(),
-            'soldCount'    => Property::published()->sold()->count(),
+            'featured'     => $home['featured'],
+            'recentlySold' => $home['recentlySold'],
+            'testimonials' => $catalogue->featuredTestimonials(),
+            'soldCount'    => $home['soldCount'],
         ]);
     }
 
     public function about()
     {
         return view('pages.about', [
-            'testimonials' => Testimonial::published()->take(2)->get(),
+            'testimonials' => app(CatalogueCache::class)->testimonials()->take(2),
         ]);
     }
 
@@ -55,7 +56,7 @@ class PageController extends Controller
     public function testimonials()
     {
         return view('pages.testimonials', [
-            'testimonials' => Testimonial::published()->get(),
+            'testimonials' => app(CatalogueCache::class)->testimonials(),
         ]);
     }
 

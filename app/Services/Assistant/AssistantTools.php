@@ -9,6 +9,7 @@ use App\Models\Property;
 use App\Services\Listings\PropertySearch;
 use App\Support\Ai\ToolFailed;
 use App\Support\PropertyFacts;
+use App\Support\PublishedProperty;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
@@ -191,7 +192,7 @@ class AssistantTools
 
     private function findProperty(?string $slug): ?Property
     {
-        return filled($slug) ? Property::published()->where('slug', $slug)->first() : null;
+        return app(PublishedProperty::class)->bySlug($slug);
     }
 
     /** @throws ToolFailed */
