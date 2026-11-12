@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\Media;
 use App\Support\SiteSettings;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -194,7 +195,9 @@ class SettingsController extends Controller
 
         foreach (['logo_mark', 'logo', 'logo_light'] as $field) {
             if ($request->hasFile($field)) {
-                $values[$field] = $this->replaceUpload(config('agent.' . $field), $request->file($field));
+                /** @var UploadedFile $upload */
+                $upload = $request->file($field);
+                $values[$field] = $this->replaceUpload(config('agent.' . $field), $upload);
             }
         }
 
@@ -261,7 +264,7 @@ class SettingsController extends Controller
         ];
     }
 
-    private function replaceUpload(?string $current, $file): string
+    private function replaceUpload(?string $current, UploadedFile $file): string
     {
         if (Media::isUpload($current)) {
             Storage::disk('public')->delete($current);

@@ -318,7 +318,7 @@ class CatalogueCacheTest extends TestCase
             ->orderByDesc('is_featured')->orderByDesc('created_at')->take(6)->get();
         $liveSold = Property::published()->sold()->with('images')->orderByDesc('sold_at')->take(3)->get();
 
-        $home = null;
+        $home = [];
         $log = $this->queriesDuring(function () use (&$home) {
             $home = $this->cache()->home();
         });
@@ -350,7 +350,7 @@ class CatalogueCacheTest extends TestCase
         $this->cache()->testimonials();
         $live = Testimonial::published()->get();
 
-        $reviews = null;
+        $reviews = collect();
         $log = $this->queriesDuring(function () use (&$reviews) {
             $reviews = $this->cache()->testimonials();
         });
