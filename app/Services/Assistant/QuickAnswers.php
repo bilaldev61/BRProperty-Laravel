@@ -121,10 +121,33 @@ class QuickAnswers
         'areas'   => '/\b((which|what) areas|areas (do )?you (cover|deal|work)|kin areas|kahan kahan)\b/',
     ];
 
-    /** Words that make a message about property - off-topic needs none of them. */
-    private const PROPERTY_WORDS = '/\b(house|villa|home|ghar|plot|land|flat|apartment|townhouse|property|properties|penthouse|studio|marla|kanal|crore|lakh|aed|dirham|dubai|marina|jvc|jlt|palm|downtown|business bay|rent|buy|sell|listing|area|community|service charge|price|bed|room)\w*/';
+    /**
+     * What makes a message worth a model call. An allowlist, not a denylist: a
+     * visitor invents an off-topic question faster than a list of banned topics
+     * can name it. Place names are deliberately absent - "dubai visas" is about
+     * visas, and the old veto let it through on the strength of one word.
+     */
+    private const IN_SCOPE = '/\b(house|villa|home|ghar|plot|land|flat|apartment|townhouse|property|properties|penthouse|studio|marla|kanal|crore|lakh|aed|dirham|price|cost|budget|rent|rental|buy|buying|sell|sale|listing|listings|bed|bath|room|sq ?ft|square (?:feet|foot)|area|areas|community|suburb|neighbou?rhood|nearby|owner|seller|landlord|developer|tenant|agent|agency|broker|viewing|visit|inspection|offer|negotiat\w*|discount|mortgage|loan|instal+ments?|title|deed|noc|ejari|oqood|dld|rera|orn|permit|licen[cs]e\w*|registered|registration|service charge|maintenance|dewa|handover|possession|completion|off ?plan|furnish\w*|parking|garage|balcony|gym|pool|school|metro|mall|hospital|beach|park|airport)\b/i';
 
-    private const OFF_TOPIC = '/\b(weather|recipe|cricket|football|movie|film|song|joke|poem|story|code|coding|python|javascript|php|homework|essay|assignment|maths?|translate|politics|election|news|chatgpt|openai|write me)\b/';
+    /**
+     * The opinion, viewing and lead words from NEEDS_MODEL - the messages the
+     * rules deliberately hand on while still being about property. The bare
+     * quantifiers are left out: "any threats from iran" is not a search, and
+     * reading "any" as one switched the gate off for it.
+     */
+    private const IN_SCOPE_INTENT = '/\b(call me|contact me|my (name|number)|mera (naam|number)|visit|viewing|showing|tour|dekhna|dekh sakt|meet|appointment|offer|book|token|buy it|purchase|compare|better|best|recommend|suggest|similar|cheaper|invest|investing|investment|roi|resale|appreciation|capital gain|rental yield|outlook|why|explain)\b/i';
+
+    /**
+     * A person in distress is not an off-topic visitor, and no commercial scope
+     * rule should talk over them. The gate stands down for the whole thread.
+     */
+    private const DISTRESS = '/\b(kidnap\w*|abduct\w*|hostage|emergency|ambulance|police|999|911|in danger|help me|suicid\w*|kill (?:myself|me)|heart attack|trapped|threaten\w*|attacked|bleeding|dying)\b/i';
+
+    /**
+     * Is this business real and licensed? A registration is a legal claim made
+     * in the agency's name, so it is answered from config and never inferred.
+     */
+    private const TRUST = '/\b(scam|fraud\w*|looting|cheating|legit|legitimate|trustworthy|dodgy|shady)\b|\b(?:you|u|your|agency|company|business|brproperty)\b[^.?!]{0,30}\b(licen[cs]e[ds]?|licen[cs]ing|registered|registration|rera|orn)\b|\b(?:rera|orn|trade)\s+(?:number|no|licen[cs]e|registration|certificate)\b/i';
 
     /**
      * A hello or a thanks on its own - small talk rather than a question.
@@ -137,6 +160,61 @@ class QuickAnswers
         $text = $this->normalise($message);
 
         return (bool) preg_match(self::GREETING, $text) || (bool) preg_match(self::THANKS, $text);
+    }
+
+    /**
+     * The last gate before a model call: nothing above could answer this, so is
+     * it even about property? Asked here rather than up front so that contact,
+     * hours and area questions - which carry no property word - still answer.
+     */
+    public function isOffTopic(ChatConversation $conversation, string $message): bool
+    {
+        if (! config('ai.chat.quick_answers')) {
+            return false;
+        }
+
+        $property = $conversation->property;
+
+        // On a listing page every question is about that listing until the
+        // visitor says otherwise, so there is nothing here to gate.
+        if ($property !== null && $property->is_published) {
+            return false;
+        }
+
+        $text = $this->normalise($message);
+
+        // A handful of words carries no topic of its own - "tell me more", "is
+        // it available". Those are continuations, and the model has the history.
+        if ($text === '' || count(explode(' ', $text)) <= 4) {
+            return false;
+        }
+
+        // A digit is a budget, a phone number or a bedroom count - all of them
+        // property business, and none of them worth guessing a topic from.
+        if (
+            preg_match(self::IN_SCOPE, $text)
+            || preg_match(self::IN_SCOPE_INTENT, $text)
+            || preg_match(self::DISTRESS, $text)
+            || preg_match('/\d/', $text)
+        ) {
+            return false;
+        }
+
+        // Distress anywhere in the thread stands the gate down: a later message
+        // in an emergency conversation is not a new off-topic visitor.
+        foreach ($conversation->messages()->pluck('content') as $said) {
+            if (preg_match(self::DISTRESS, $this->normalise((string) $said))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @return array{text: string, kind: string} */
+    public function offTopic(): array
+    {
+        return $this->reply('I can only help with property questions - our listings, areas, prices and arranging a call with ' . config('agent.name') . '. What are you looking for?', 'off_topic');
     }
 
     /** @return array{text: string, kind: string}|null */
@@ -160,8 +238,8 @@ class QuickAnswers
             return $this->identity();
         }
 
-        if (preg_match(self::OFF_TOPIC, $text) && ! preg_match(self::PROPERTY_WORDS, $text)) {
-            return $this->reply('I can only help with property questions - our listings, areas, prices and arranging a call with ' . config('agent.name') . '. What are you looking for?', 'off_topic');
+        if (preg_match(self::TRUST, $text)) {
+            return $this->trust($conversation);
         }
 
         if (mb_strlen($text) > self::MAX_LENGTH) {
@@ -555,6 +633,28 @@ class QuickAnswers
                 'For anything that needs a human, ' . $agent . ' and the team handle the real side.',
             'identity',
         );
+    }
+
+    /**
+     * "Are you a scam?" / "are you RERA registered?" - asked by someone deciding
+     * whether to trust us with money, so the answer is the one place a guess
+     * does the most damage. The registration is quoted only if the agency has
+     * put a real one in config; otherwise it is the team's to confirm.
+     */
+    private function trust(ChatConversation $conversation): array
+    {
+        $agent   = config('agent.name');
+        $license = trim((string) config('agent.license'));
+
+        $text = $license !== ''
+            ? config('agent.agency') . ' is registered under ' . $license . '.'
+            : 'I cannot verify that from this chat and I will not guess. ' . $agent . ' can send you the registration and licence details directly.';
+
+        $ask = $conversation->isLead()
+            ? ' ' . $agent . ' has your details and will be in touch.'
+            : ' Leave your name and email here and ' . $agent . ' will come back to you.';
+
+        return $this->reply($text . $ask, 'agency_trust');
     }
 
     private function matchesAny(array $patterns, string $text): bool

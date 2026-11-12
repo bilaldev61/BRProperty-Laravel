@@ -49,6 +49,10 @@ class PropertyAssistant
    * A message that repeats the one just answered is not put through the ladder
    * again: the same answer a second time costs a whole prompt and tells the
    * visitor nothing, so that reply changes direction instead.
+   *
+   * A message nothing above could answer, and that is not about property, is
+   * declined by the rules rather than sent to the model to decline at full
+   * price. Distress is the exception and always reaches the model.
    */
   public function reply(ChatConversation $conversation, string $message): string
   {
@@ -77,6 +81,11 @@ class PropertyAssistant
       // No model: search the database rather than dead-ending at the model.
       $rules = $this->rules->answer($conversation, $message);
       [$reply, $answeredBy] = [$rules['text'], ChatMessage::BY_RULE_PREFIX . $rules['kind']];
+    } elseif ($this->quick->isOffTopic($conversation, $message)) {
+      // Nothing above could answer it and it is not about property, so a prompt
+      // would buy a polite decline at full price. Say it here for nothing.
+      $off = $this->quick->offTopic();
+      [$reply, $answeredBy] = [$off['text'], ChatMessage::BY_RULE_PREFIX . $off['kind']];
     } else {
       try {
         $tools = new AssistantTools($conversation);
@@ -267,9 +276,14 @@ class PropertyAssistant
         - EVERY time you tell a visitor our team will confirm something, say in that same reply that
           we will come back to them, so the question is not left hanging.
         - Never promise a viewing time, a discount, availability, or an outcome.
-        - No legal, tax or investment advice. General process questions about buying in Dubai are fine
-          to answer briefly, with a note that our team can go through specifics.
-        - Only discuss property and this agency. Politely decline anything unrelated.
+        - No legal, tax or investment advice. Never state what the law says - no offences, no
+          penalties, no what-is-legal in the UAE. General process questions about buying in Dubai
+          are fine to answer briefly, with a note that our team can go through specifics.
+        - Never state or imply anything about this agency's own licence, RERA or ORN registration,
+          permits, awards, years in business or number of deals. You have not been given those
+          facts. If asked, say the team will confirm and offer to pass their details on.
+        - Only discuss property and this agency. Anything else - news, politics, visas, flights,
+          maps, general knowledge - gets one short polite decline, not an answer.
 
         FINDING PROPERTIES
         - Use search_properties whenever someone describes what they want or asks what is available.
