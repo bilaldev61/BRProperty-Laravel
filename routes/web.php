@@ -125,6 +125,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('ability:assistant.view')->group(function () {
             Route::get('assistant', [AdminAssistantController::class, 'index'])->name('assistant.index');
             Route::get('assistant/questions', [AdminAssistantController::class, 'questions'])->name('assistant.questions');
+            Route::get('assistant/usage', [AdminAssistantController::class, 'usage'])->name('assistant.usage');
             Route::get('assistant/{conversation}', [AdminAssistantController::class, 'show'])->name('assistant.show');
         });
 

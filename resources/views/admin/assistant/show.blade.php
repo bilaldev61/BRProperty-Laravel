@@ -58,6 +58,39 @@
                 </ul>
             </x-admin.card>
             @endif
+
+            <x-admin.card title="Model requests" tone="indigo">
+                @if ($conversation->usage->isEmpty())
+                <p class="text-sm text-ink-500">
+                    Every reply here came from your listing data. Nothing was sent to the model.
+                </p>
+                @else
+                <ul class="space-y-3">
+                    @foreach ($conversation->usage->sortBy('id') as $row)
+                    <li>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <span class="text-sm font-medium text-ink-900">Request {{ $row->round + 1 }}</span>
+                            <span class="shrink-0 text-xs text-ink-400 tabular-nums">{{ $row->latencyLabel() }}</span>
+                        </div>
+                        <p class="mt-0.5 text-xs text-ink-500 tabular-nums">
+                            {{ number_format($row->prompt_tokens) }} prompt
+                            &middot; {{ number_format($row->completion_tokens) }} reply
+                            &middot; {{ number_format($row->cached_tokens) }} reused
+                        </p>
+                        @if ($row->toolNames() !== [])
+                        <p class="mt-1.5 flex flex-wrap gap-1">
+                            @foreach ($row->toolNames() as $tool)
+                            <x-admin.badge tone="teal">{{ $tool }}</x-admin.badge>
+                            @endforeach
+                        </p>
+                        @endif
+                    </li>
+                    @endforeach
+                </ul>
+                <a href="{{ route('admin.assistant.usage') }}"
+                    class="mt-4 block text-sm font-medium text-brass-600 hover:underline">All model usage</a>
+                @endif
+            </x-admin.card>
         </aside>
     </div>
 </x-layouts.admin>

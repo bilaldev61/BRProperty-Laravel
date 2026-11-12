@@ -34,4 +34,12 @@ class ChatUsage extends Model
     {
         return filled($this->tools) ? explode(',', (string) $this->tools) : [];
     }
+
+    /** Milliseconds under a second, one decimal above it - a wait reads better than 3465ms. */
+    public function latencyLabel(): string
+    {
+        return $this->latency_ms >= 1000
+            ? number_format($this->latency_ms / 1000, 1) . 's'
+            : $this->latency_ms . 'ms';
+    }
 }

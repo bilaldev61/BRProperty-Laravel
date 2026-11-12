@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\ChatUnansweredQuestion;
+use App\Models\ChatUsage;
 use Illuminate\Http\Request;
 
 /**
  * What the public assistant has been doing: every chat, which ones became
- * leads, and what visitors asked that the listings could not answer.
+ * leads, what visitors asked that the listings could not answer, and what the
+ * model was sent to answer the rest.
  */
 class AssistantController extends Controller
 {
@@ -24,7 +26,7 @@ class AssistantController extends Controller
         $conversations = ChatConversation::with(['property', 'enquiry'])
             ->withCount('unansweredQuestions')
             ->where('visitor_messages', '>', 0)
-            ->when($request->boolean('leads'), fn ($q) => $q->whereNotNull('enquiry_id'))
+            ->when($request->boolean('leads'), fn($q) => $q->whereNotNull('enquiry_id'))
             ->latest('last_message_at')
             ->paginate(25)
             ->withQueryString();
@@ -58,9 +60,61 @@ class AssistantController extends Controller
 
     public function show(ChatConversation $conversation)
     {
-        $conversation->load(['messages', 'property', 'enquiry', 'unansweredQuestions']);
+        $conversation->load(['messages', 'property', 'enquiry', 'unansweredQuestions', 'usage']);
 
         return view('admin.assistant.show', ['conversation' => $conversation]);
+    }
+
+    /**
+     * The split behind a reply's token total: one row per request the model was
+     * sent, so a tool round is visible as the extra request it is, and a cache
+     * hit is visible at all. `chat_messages.tokens` holds only the total.
+     */
+    public function usage()
+    {
+        $since = now()->subDays(30);
+        $window = fn() => ChatUsage::where('created_at', '>=', $since);
+
+        $totals = $window()
+            ->selectRaw('count(*) as requests')
+            ->selectRaw('coalesce(sum(prompt_tokens), 0) as prompt')
+            ->selectRaw('coalesce(sum(completion_tokens), 0) as completion')
+            ->selectRaw('coalesce(sum(cached_tokens), 0) as cached')
+            ->selectRaw('coalesce(sum(cache_write_tokens), 0) as written')
+            ->selectRaw('coalesce(avg(latency_ms), 0) as latency')
+            ->first();
+
+        $byModel = $window()
+            ->select('model')
+            ->selectRaw('count(*) as requests')
+            ->selectRaw('coalesce(sum(prompt_tokens), 0) as prompt')
+            ->selectRaw('coalesce(sum(cached_tokens), 0) as cached')
+            ->selectRaw('coalesce(avg(latency_ms), 0) as latency')
+            ->groupBy('model')
+            ->orderByDesc('requests')
+            ->get();
+
+        $requests = $window()
+            ->with(['conversation.enquiry', 'message'])
+            ->latest('id')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('admin.assistant.usage', [
+            'requests' => $requests,
+            'byModel'  => $byModel,
+            'stats'    => [
+                'requests'    => (int) $totals->requests,
+                'prompt'      => (int) $totals->prompt,
+                'completion'  => (int) $totals->completion,
+                'cached'      => (int) $totals->cached,
+                'written'     => (int) $totals->written,
+                'cache_rate'  => $totals->prompt ? (int) round($totals->cached / $totals->prompt * 100) : 0,
+                'latency'     => (int) round($totals->latency),
+                // A separate count: `round` reads as a function inside raw SQL.
+                'tool_rounds' => $window()->where('round', '>', 0)->count(),
+            ],
+        ]);
     }
 
     /**
@@ -75,7 +129,7 @@ class AssistantController extends Controller
             ->get();
 
         $byTopic = $recent->groupBy('topic')
-            ->map(fn ($group, $topic) => [
+            ->map(fn($group, $topic) => [
                 'topic'    => $topic,
                 'label'    => $group->first()->topicLabel(),
                 'count'    => $group->count(),
@@ -86,12 +140,12 @@ class AssistantController extends Controller
 
         $byProperty = $recent->whereNotNull('property_id')
             ->groupBy('property_id')
-            ->map(fn ($group) => [
+            ->map(fn($group) => [
                 'property' => $group->first()->property,
                 'count'    => $group->count(),
                 'topics'   => $group->map->topicLabel()->countBy()->sortDesc(),
             ])
-            ->filter(fn ($row) => $row['property'] !== null)
+            ->filter(fn($row) => $row['property'] !== null)
             ->sortByDesc('count')
             ->take(10)
             ->values();
