@@ -12,11 +12,11 @@ $brandParts = preg_match('/^(.+?)([A-Z][^A-Z]*)$/u', $brand, $m) ? [$m[1], $m[2]
 
 {{--
     Hero. The photograph runs full-bleed behind the floating bar, so the section is
-    pulled up by exactly the bar's height (88px) and pads the same amount back in -
-    which is what lets the photo show behind the glass pill instead of starting
-    underneath it.
+    pulled up by exactly the bar's height and pads the same amount back in - which
+    is what lets the photo show behind the glass pill instead of starting underneath
+    it. .hero-under-bar holds that height for every page that does this.
 --}}
-<section class="relative isolate -mt-[88px] flex min-h-[92svh] flex-col overflow-hidden pt-[88px]">
+<section class="hero-under-bar relative isolate flex min-h-[92svh] flex-col overflow-hidden">
     <img
         src="{{ \App\Support\Media::agent('hero_image') }}"
         alt=""

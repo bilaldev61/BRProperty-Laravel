@@ -27,17 +27,6 @@ $current = $nav ?? '';
 $isGroupActive = fn ($group) => $current === $group['key']
 || collect($group['children'] ?? [])->pluck('key')->contains($current);
 
-// The home and contact pages both pull a full-bleed photograph up behind the bar,
-// so there the bar floats over the image. Every other page opens on a flat dark
-// hero band and the bar sits on that same colour. Dark glass with light type in
-// both cases, so the nav never changes colour as you move between pages. One set
-// of classes, chosen here, keeps them from drifting apart.
-$overlay = in_array($current, ['home', 'contact'], true);
-
-// Dark enough that the labels stay legible once the bar is floating over a pale
-// section on scroll, not only over the dark ground it starts on.
-$pill = 'border-white/15 bg-ink-950/75 text-sand-50 shadow-ink-950/25';
-
 $activeLink = 'bg-white/15 text-white';
 $idleLink = 'text-sand-100 hover:bg-white/10 hover:text-white';
 
@@ -45,15 +34,16 @@ $muted = 'text-sand-300';
 @endphp
 
 {{--
-    The bar itself is a floating pill rather than a full-width strip: inset from the
-    edges, frosted, and pinned on scroll. It is dark glass on every page - over the
-    home photograph, and inside the dark band the other pages open with - so the nav
-    never changes colour as you move around the site.
+    The bar is a floating pill rather than a full-width strip: inset from the edges,
+    frosted, pinned on scroll, and with no background behind it on any page. Pages
+    that open on a dark band run that band up under the pill (see .hero-under-bar)
+    so the bar floats over it exactly as it does over the home photograph.
 --}}
-<header @class(['sticky top-0 z-40 px-3 pt-3 pb-3 sm:px-5', 'bg-ink-900'=> ! $overlay])>
-    <div @class([ 'mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 rounded-full border px-4 shadow-lg backdrop-blur-xl sm:gap-6 sm:px-6' ,
-        $pill,
-        ])>
+<header class="sticky top-0 z-40 px-3 pt-3 pb-3 sm:px-5">
+    {{-- Dark enough that the labels stay legible over the pale page base as well
+         as over a dark hero or a photograph: with no background on the bar itself,
+         this pill is the only thing behind the type. --}}
+    <div class="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 rounded-full border border-white/15 bg-ink-950/75 px-4 text-sand-50 shadow-lg shadow-ink-950/25 backdrop-blur-xl sm:gap-6 sm:px-6">
         <a href="{{ route('home') }}" class="flex shrink-0 items-center gap-2.5" aria-label="{{ $agent['agency'] }} home">
             <img src="{{ \App\Support\Media::agent('logo_mark') }}" alt="" width="36" height="36" class="h-9 w-9 shrink-0" aria-hidden="true">
             <span class="leading-tight whitespace-nowrap">

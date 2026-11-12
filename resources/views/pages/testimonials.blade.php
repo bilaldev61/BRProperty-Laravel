@@ -29,7 +29,7 @@ $initials = fn (string $author) => \Illuminate\Support\Str::of($author)
 
 {{-- Dark opening band: the number is the point of this page, so it gets the
      weight of the hero rather than sitting in a row of stars under the title. --}}
-<section class="relative isolate overflow-hidden bg-ink-900 text-sand-100">
+<section class="hero-under-bar relative isolate overflow-hidden bg-ink-900 text-sand-100">
     <div class="absolute -top-24 right-0 -z-10 h-72 w-72 rounded-full bg-brass-500/20 blur-3xl" aria-hidden="true"></div>
     <div class="absolute -bottom-32 -left-16 -z-10 h-80 w-80 rounded-full bg-indigo-500/20 blur-3xl" aria-hidden="true"></div>
 

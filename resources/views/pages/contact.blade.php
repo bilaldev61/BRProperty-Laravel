@@ -17,7 +17,7 @@
      of the glass: it points at the form without hiding the photo behind it. The
      section is pulled up by the bar's height so the photo runs behind the bar
      rather than starting below it. --}}
-<section class="relative isolate -mt-[88px] overflow-hidden bg-ink-950 pt-[88px]">
+<section class="hero-under-bar relative isolate overflow-hidden bg-ink-950">
     {{-- This photo is the contact page's largest paint, so it stays eager and
          gets the same priority hint the home hero has. --}}
     <img src="{{ \App\Support\Media::agent('hero_image') }}" alt="" aria-hidden="true" decoding="async" fetchpriority="high"

@@ -299,6 +299,18 @@
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
 }
 
+/* Runs a page's opening band up under the floating nav bar.
+ * The bar is transparent on every page, so a dark hero has to start at the very
+ * top of the document or a strip of the pale page base shows above it. Pulling
+ * the section up by the bar's height and padding the same amount back in moves
+ * the band's background under the glass pill without moving any of its content.
+ * 88px = the header's pt-3 + pb-3 (12 + 12) around its h-16 pill (64). Change
+ * the bar's height and this is the only number to change with it. */
+@utility hero-under-bar {
+    margin-top: -88px;
+    padding-top: 88px;
+}
+
 /* ---- SweetAlert2 -------------------------------------------------------- */
 .swal2-popup {
     font-family: var(--font-sans);
