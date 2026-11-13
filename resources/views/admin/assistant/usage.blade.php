@@ -31,9 +31,11 @@ $costHint = $stats['unpriced'] ? 'Some models unpriced · est.' : 'Token split �
         @foreach ([
         ['Estimated cost', $costValue, $costHint],
         ['Model requests', number_format($stats['requests']), 'One per request, not per reply'],
-        ['Prompt tokens', number_format($stats['prompt']), 'Sent to the model, re-sent every round'],
+        ['Prompt tokens', number_format($stats['prompt']), 'Sent to the model, re-sent every round · '.number_format($stats['cached']).' reused + '.number_format($stats['written']).' written + '.number_format(max(0, $stats['prompt'] - $stats['cached'] - $stats['written'])).' fresh'],
         ['Reply tokens', number_format($stats['completion']), 'What the model wrote back'],
-        ['Reused from cache', number_format($stats['cached']), $stats['cache_rate'].'% of the prompt · '.number_format($stats['written']).' written to cache'],
+        ['Reused from cache', number_format($stats['cached']), $stats['cache_rate'].'% of the prompt · cheapest (cache read)'],
+        ['Written to cache', number_format($stats['written']), 'Saved for next time (cache write)'],
+        ['Fresh (full price)', number_format(max(0, $stats['prompt'] - $stats['cached'] - $stats['written'])), 'Brand new · full input price'],
         ['Average wait', $wait, 'Per request, tool rounds included'],
         ['Extra tool rounds', number_format($stats['tool_rounds']), 'Requests a tool call added to a reply'],
         ] as $i => [$label, $value, $hint])
