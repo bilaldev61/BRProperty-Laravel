@@ -1,3 +1,4 @@
+@use('App\Support\Ai\ModelCost')
 <x-layouts.admin title="Assistant chat" heading="Assistant chat"
     :intro="'Started '.$conversation->created_at->format('l j F Y, g:ia').' · '.$conversation->visitor_messages.' '.Str::plural('message', $conversation->visitor_messages).' from the visitor.'">
     <x-slot:actions>
@@ -76,6 +77,7 @@
                             {{ number_format($row->prompt_tokens) }} prompt
                             &middot; {{ number_format($row->completion_tokens) }} reply
                             &middot; {{ number_format($row->cached_tokens) }} reused
+                            &middot; {{ ModelCost::format($row->cost()) }}
                         </p>
                         @if ($row->toolNames() !== [])
                         <p class="mt-1.5 flex flex-wrap gap-1">

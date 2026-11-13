@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Ai\ModelCost;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -33,6 +34,18 @@ class ChatUsage extends Model
     public function toolNames(): array
     {
         return filled($this->tools) ? explode(',', (string) $this->tools) : [];
+    }
+
+    /** Estimated dollars for this request, or null when the model is unpriced. */
+    public function cost(): ?float
+    {
+        return ModelCost::estimate(
+            (string) $this->model,
+            (int) $this->prompt_tokens,
+            (int) $this->cached_tokens,
+            (int) $this->cache_write_tokens,
+            (int) $this->completion_tokens,
+        );
     }
 
     /** Milliseconds under a second, one decimal above it - a wait reads better than 3465ms. */

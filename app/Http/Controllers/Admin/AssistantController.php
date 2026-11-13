@@ -7,6 +7,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\ChatUnansweredQuestion;
 use App\Models\ChatUsage;
+use App\Support\Ai\ModelCost;
 use Illuminate\Http\Request;
 
 /**
@@ -70,12 +71,18 @@ class AssistantController extends Controller
      * sent, so a tool round is visible as the extra request it is, and a cache
      * hit is visible at all. `chat_messages.tokens` holds only the total.
      */
-    public function usage()
+    public function usage(Request $request)
     {
         $since = now()->subDays(30);
         $window = fn() => ChatUsage::where('created_at', '>=', $since);
 
-        $totals = $window()
+        // The filter narrows the whole report to one model; the dropdown still
+        // lists every model so you can switch or reset.
+        $modelFilter = $request->query('model');
+        $modelFilter = is_string($modelFilter) && $modelFilter !== '' ? $modelFilter : null;
+        $report = fn() => $window()->when($modelFilter, fn($q) => $q->where('model', $modelFilter));
+
+        $totals = $report()
             ->selectRaw('count(*) as requests')
             ->selectRaw('coalesce(sum(prompt_tokens), 0) as prompt')
             ->selectRaw('coalesce(sum(completion_tokens), 0) as completion')
@@ -88,22 +95,53 @@ class AssistantController extends Controller
             ->select('model')
             ->selectRaw('count(*) as requests')
             ->selectRaw('coalesce(sum(prompt_tokens), 0) as prompt')
+            ->selectRaw('coalesce(sum(completion_tokens), 0) as completion')
             ->selectRaw('coalesce(sum(cached_tokens), 0) as cached')
+            ->selectRaw('coalesce(sum(cache_write_tokens), 0) as written')
             ->selectRaw('coalesce(avg(latency_ms), 0) as latency')
             ->groupBy('model')
             ->orderByDesc('requests')
             ->get();
 
-        $requests = $window()
+        // Prices differ per model, so price each group from its own token split.
+        // This stays global: it drives the dropdown and the per-model prices.
+        foreach ($byModel as $row) {
+            $row->cost = ModelCost::estimate($row->model, (int) $row->prompt, (int) $row->cached, (int) $row->written, (int) $row->completion);
+            $row->category = ModelCost::category($row->model);
+        }
+
+        // Only the selected model's groups feed the cards and the cost total.
+        $shown = $modelFilter
+            ? $byModel->filter(fn($row) => $row->model === $modelFilter)->values()
+            : $byModel;
+
+        $cost = 0.0;
+        $unpriced = false;
+        // Three buckets so the panel separates your own box from cloud spend.
+        $modelGroups = [
+            'local' => ['label' => 'Local (self-hosted)', 'models' => []],
+            'free'  => ['label' => 'OpenRouter · Free', 'models' => []],
+            'paid'  => ['label' => 'OpenRouter · Paid', 'models' => []],
+        ];
+        foreach ($shown as $row) {
+            $unpriced = $unpriced || $row->cost === null;
+            $cost += $row->cost ?? 0.0;
+            $modelGroups[$row->category]['models'][] = $row;
+        }
+
+        $requests = $report()
             ->with(['conversation.enquiry', 'message'])
             ->latest('id')
             ->paginate(25)
             ->withQueryString();
 
         return view('admin.assistant.usage', [
-            'requests' => $requests,
-            'byModel'  => $byModel,
-            'stats'    => [
+            'requests'    => $requests,
+            'byModel'     => $byModel,
+            'modelGroups' => $modelGroups,
+            'modelFilter' => $modelFilter,
+            'models'      => $byModel->pluck('model')->values()->all(),
+            'stats'       => [
                 'requests'    => (int) $totals->requests,
                 'prompt'      => (int) $totals->prompt,
                 'completion'  => (int) $totals->completion,
@@ -111,8 +149,10 @@ class AssistantController extends Controller
                 'written'     => (int) $totals->written,
                 'cache_rate'  => $totals->prompt ? (int) round($totals->cached / $totals->prompt * 100) : 0,
                 'latency'     => (int) round($totals->latency),
+                'cost'        => $cost,
+                'unpriced'    => $unpriced,
                 // A separate count: `round` reads as a function inside raw SQL.
-                'tool_rounds' => $window()->where('round', '>', 0)->count(),
+                'tool_rounds' => $report()->where('round', '>', 0)->count(),
             ],
         ]);
     }

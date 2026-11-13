@@ -277,6 +277,82 @@ class AssistantAdminTest extends TestCase
         );
     }
 
+    public function test_the_usage_panel_groups_models_into_local_free_and_paid(): void
+    {
+        config(['ai.local_models' => ['qwen3-14b']]);
+        $this->usedChat([['model' => 'qwen3-14b']]);
+        $this->usedChat([['model' => 'nvidia/nemotron-3-ultra-550b-a55b:free']]);
+        $this->usedChat([['model' => 'anthropic/claude-haiku-5.5']]);
+
+        $response = $this->actingAs($this->agent)->get('/admin/assistant/usage')->assertOk();
+
+        $groups = $response->viewData('modelGroups');
+        $this->assertSame(['qwen3-14b'], collect($groups['local']['models'])->pluck('model')->all());
+        $this->assertSame(['nvidia/nemotron-3-ultra-550b-a55b:free'], collect($groups['free']['models'])->pluck('model')->all());
+        $this->assertSame(['anthropic/claude-haiku-5.5'], collect($groups['paid']['models'])->pluck('model')->all());
+
+        $response->assertSee('Local (self-hosted)')
+            ->assertSee('OpenRouter · Free')
+            ->assertSee('OpenRouter · Paid');
+    }
+
+    public function test_the_requests_table_can_filter_to_one_model(): void
+    {
+        $this->usedChat([['model' => 'anthropic/claude-haiku-5.5']]);
+        $this->usedChat([['model' => 'nvidia/nemotron-3-ultra-550b-a55b:free']]);
+
+        $response = $this->actingAs($this->agent)
+            ->get('/admin/assistant/usage?model=anthropic/claude-haiku-5.5')
+            ->assertOk();
+
+        $this->assertSame('anthropic/claude-haiku-5.5', $response->viewData('modelFilter'));
+        $this->assertSame(
+            ['anthropic/claude-haiku-5.5'],
+            $response->viewData('requests')->pluck('model')->unique()->values()->all(),
+        );
+        // The whole report narrows to the selected model, not just the table.
+        $this->assertSame(1, $response->viewData('stats')['requests']);
+        $groups = $response->viewData('modelGroups');
+        $this->assertSame(['anthropic/claude-haiku-5.5'], collect($groups['paid']['models'])->pluck('model')->all());
+        $this->assertSame([], $groups['free']['models']);
+        $this->assertSame([], $groups['local']['models']);
+        // The dropdown still offers every model so you can switch or reset.
+        $this->assertCount(2, $response->viewData('models'));
+    }
+
+    public function test_the_cost_card_follows_the_model_filter(): void
+    {
+        $this->usedChat([['model' => 'anthropic/claude-haiku-5.5', 'prompt_tokens' => 2000, 'completion_tokens' => 200, 'cached_tokens' => 1000]]);
+        $this->usedChat([['model' => 'anthropic/claude-sonnet-5.5', 'prompt_tokens' => 2000, 'completion_tokens' => 200]]);
+
+        // Haiku alone: (1000 fresh x 0.10 + 1000 cached x 0.01 + 200 x 0.50) / 1e6.
+        $filtered = $this->actingAs($this->agent)
+            ->get('/admin/assistant/usage?model=anthropic/claude-haiku-5.5')->assertOk();
+        $this->assertEqualsWithDelta(0.00021, $filtered->viewData('stats')['cost'], 0.0000001);
+
+        // Both paid models together cost more than Haiku alone.
+        $all = $this->actingAs($this->agent)->get('/admin/assistant/usage')->assertOk();
+        $this->assertGreaterThan(0.00021, $all->viewData('stats')['cost']);
+    }
+
+    public function test_the_requests_table_shows_all_models_by_default(): void
+    {
+        $this->usedChat([['model' => 'anthropic/claude-haiku-5.5']]);
+        $this->usedChat([['model' => 'nvidia/nemotron-3-ultra-550b-a55b:free']]);
+
+        $response = $this->actingAs($this->agent)->get('/admin/assistant/usage')->assertOk();
+
+        $this->assertNull($response->viewData('modelFilter'));
+        $this->assertSame(2, $response->viewData('requests')->count());
+
+        $models = $response->viewData('models');
+        sort($models);
+        $this->assertSame(
+            ['anthropic/claude-haiku-5.5', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
+            $models,
+        );
+    }
+
     public function test_the_usage_panel_ignores_requests_older_than_thirty_days(): void
     {
         $old = $this->usedChat();
@@ -334,5 +410,44 @@ class AssistantAdminTest extends TestCase
         $this->assertSame(2, $stats['requests']);
         $this->assertSame(1, $stats['tool_rounds']);
         $this->assertSame(1000, $stats['prompt']);
+    }
+
+    public function test_the_usage_panel_estimates_cost_for_a_paid_model(): void
+    {
+        $this->usedChat([['model' => 'anthropic/claude-haiku-5.5', 'prompt_tokens' => 2000, 'completion_tokens' => 200, 'cached_tokens' => 1000]]);
+
+        $stats = $this->usageStats();
+
+        $this->assertEqualsWithDelta(0.00021, $stats['cost'], 0.0000001);
+        $this->assertFalse($stats['unpriced']);
+
+        $this->actingAs($this->agent)->get('/admin/assistant/usage')
+            ->assertOk()
+            ->assertSee('Estimated cost')
+            ->assertSee('$0.0002');
+    }
+
+    public function test_a_free_model_shows_zero_cost(): void
+    {
+        $this->usedChat([['model' => 'nvidia/nemotron-3-ultra-550b-a55b:free', 'prompt_tokens' => 2000, 'completion_tokens' => 200]]);
+
+        $stats = $this->usageStats();
+
+        $this->assertSame(0.0, $stats['cost']);
+        $this->assertFalse($stats['unpriced']);
+
+        $this->actingAs($this->agent)->get('/admin/assistant/usage')->assertOk()->assertSee('$0.00');
+    }
+
+    public function test_an_unpriced_model_is_flagged_not_priced_at_zero(): void
+    {
+        $this->usedChat([['model' => 'some/unknown-model']]);
+
+        $stats = $this->usageStats();
+
+        $this->assertTrue($stats['unpriced']);
+        $this->assertSame(0.0, $stats['cost']);
+
+        $this->actingAs($this->agent)->get('/admin/assistant/usage')->assertOk()->assertSee('Unpriced model');
     }
 }

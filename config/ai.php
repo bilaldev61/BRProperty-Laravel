@@ -79,6 +79,43 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Model list prices (estimates)
+    |--------------------------------------------------------------------------
+    |
+    | USD per 1M tokens, used only to estimate the admin "Model usage" cost.
+    | These are list prices, not a bill - OpenRouter's own activity log is the
+    | source of truth. A `:free` slug is always 0 and needs no entry; a model
+    | with no entry here is shown as unpriced rather than guessed at. Cache
+    | write is 1.25x input for Anthropic, and plain input for the automatic
+    | cachers (OpenAI, DeepSeek). Update these when a provider changes price.
+    |
+    */
+    'pricing' => [
+        'anthropic/claude-haiku-5.5'  => ['input' => 0.10, 'output' => 0.50, 'cache_read' => 0.01,  'cache_write' => 0.125],
+        'anthropic/claude-sonnet-5.5' => ['input' => 2.00, 'output' => 10.0, 'cache_read' => 0.10,  'cache_write' => 2.50],
+        'anthropic/claude-haiku-4.5'  => ['input' => 1.00, 'output' => 5.00, 'cache_read' => 0.10,  'cache_write' => 1.25],
+        'openai/gpt-4o-mini'          => ['input' => 0.15, 'output' => 0.60, 'cache_read' => 0.075, 'cache_write' => 0.15],
+        'openai/gpt-5-mini'           => ['input' => 0.25, 'output' => 2.00, 'cache_read' => 0.025, 'cache_write' => 0.25],
+        'openai/gpt-5-nano'           => ['input' => 0.05, 'output' => 0.40, 'cache_read' => 0.005, 'cache_write' => 0.05],
+        'deepseek/deepseek-v3.2'      => ['input' => 0.26, 'output' => 0.38, 'cache_read' => 0.13,  'cache_write' => 0.26],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Local (self-hosted) models
+    |--------------------------------------------------------------------------
+    |
+    | Slugs served by your own endpoint (e.g. Qwen3-14B behind TGI), reached by
+    | pointing OPENROUTER_BASE_URL at it. Listed here so the Model usage panel
+    | groups them under "Local" at $0 API cost. Empty until you run one.
+    |
+    */
+    'local_models' => [
+        // 'qwen3-14b',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Public property assistant
     |--------------------------------------------------------------------------
     |

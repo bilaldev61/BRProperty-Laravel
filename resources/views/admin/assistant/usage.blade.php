@@ -1,9 +1,13 @@
+@use('App\Support\Ai\ModelCost')
 @php
 $tones = ['teal', 'brass', 'indigo', 'clay'];
 
 $wait = $stats['latency'] >= 1000
 ? number_format($stats['latency'] / 1000, 1).'s'
 : $stats['latency'].'ms';
+
+$costValue = ($stats['unpriced'] && $stats['cost'] == 0.0) ? '—' : ModelCost::format($stats['cost']);
+$costHint = $stats['unpriced'] ? 'Some models unpriced · est.' : 'Token split × list price · est.';
 @endphp
 
 <x-layouts.admin title="Model usage" heading="Model usage"
@@ -17,8 +21,15 @@ $wait = $stats['latency'] >= 1000
     <x-empty-state title="No model requests yet"
         message="Every reply the model writes records a row here. Answers built from your listing data are free and record nothing." />
     @else
+    @if ($modelFilter)
+    <div class="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm text-teal-800">
+        <span>Figures below are for <span class="font-mono font-semibold">{{ $modelFilter }}</span> only.</span>
+        <a href="{{ route('admin.assistant.usage') }}" class="ml-auto font-medium underline hover:no-underline">Clear filter</a>
+    </div>
+    @endif
     <section aria-label="Last 30 days" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         @foreach ([
+        ['Estimated cost', $costValue, $costHint],
         ['Model requests', number_format($stats['requests']), 'One per request, not per reply'],
         ['Prompt tokens', number_format($stats['prompt']), 'Sent to the model, re-sent every round'],
         ['Reply tokens', number_format($stats['completion']), 'What the model wrote back'],
@@ -33,23 +44,39 @@ $wait = $stats['latency'] >= 1000
     <div class="grid gap-6 lg:grid-cols-[1fr_1.1fr] lg:items-start">
         <x-admin.card title="By model" tone="indigo"
             description="Which model answered, and whether it reused anything.">
-            <ul class="space-y-4">
-                @foreach ($byModel as $row)
-                <li>
-                    <div class="flex items-baseline justify-between gap-3">
-                        <span class="truncate font-mono text-xs text-ink-900">{{ $row->model }}</span>
-                        <span class="shrink-0 text-sm font-semibold text-ink-700 tabular-nums">
-                            {{ number_format($row->requests) }}
-                        </span>
-                    </div>
-                    <p class="mt-1 text-xs text-ink-500 tabular-nums">
-                        {{ number_format($row->prompt) }} prompt tokens
-                        &middot; {{ $row->prompt ? round($row->cached / $row->prompt * 100) : 0 }}% reused
-                        &middot; {{ number_format($row->latency) }}ms average
-                    </p>
-                </li>
+            <div class="space-y-5">
+                @foreach ($modelGroups as $group)
+                <div>
+                    <h3 class="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500">
+                        {{ $group['label'] }}
+                    </h3>
+                    @if (count($group['models']) === 0)
+                    <p class="mt-2 text-xs text-ink-400">No requests yet.</p>
+                    @else
+                    <ul class="mt-2 space-y-4">
+                        @foreach ($group['models'] as $row)
+                        <li>
+                            <div class="flex items-baseline justify-between gap-3">
+                                <span class="truncate font-mono text-xs text-ink-900">{{ $row->model }}</span>
+                                <span class="shrink-0 text-sm font-semibold text-ink-700 tabular-nums">
+                                    {{ number_format($row->requests) }}
+                                </span>
+                            </div>
+                            <p class="mt-1 text-xs text-ink-500 tabular-nums">
+                                {{ number_format($row->prompt) }} prompt tokens
+                                &middot; {{ $row->prompt ? round($row->cached / $row->prompt * 100) : 0 }}% reused
+                                &middot; {{ number_format($row->latency) }}ms average
+                            </p>
+                            <p class="mt-0.5 text-xs text-ink-500 tabular-nums">
+                                {{ $row->cost === null ? 'Unpriced model' : ModelCost::format($row->cost) . ' estimated' }}
+                            </p>
+                        </li>
+                        @endforeach
+                    </ul>
+                    @endif
+                </div>
                 @endforeach
-            </ul>
+            </div>
         </x-admin.card>
 
         <x-admin.card title="Reading these numbers" tone="brass">
@@ -68,6 +95,10 @@ $wait = $stats['latency'] >= 1000
                     A free model reports zero here every time. That is expected rather than a fault, and it costs
                     nothing, because the free tier is already free. The number starts saving money on a paid model.
                 </p>
+                <p>
+                    <strong class="font-semibold text-ink-900">Estimated cost</strong> prices that token split at the
+                    model's list rate. It is an estimate - OpenRouter's own activity log is the exact bill.
+                </p>
                 <p class="text-ink-500">
                     Answers built from your listing data never reach the model and record no row at all - the
                     &ldquo;Answered without AI&rdquo; figure on the chat list is the one that goes up when the
@@ -79,8 +110,23 @@ $wait = $stats['latency'] >= 1000
 
     <x-admin.card title="Recent requests" :padded="false" tone="teal"
         description="Newest first. Each row links to the chat it came from.">
+        <x-slot:actions>
+            <form method="GET" action="{{ route('admin.assistant.usage') }}" class="flex items-center gap-2">
+                <label for="model-filter" class="text-xs font-medium text-ink-500">Model</label>
+                <select id="model-filter" name="model" onchange="this.form.submit()"
+                    class="max-w-[18rem] rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs text-ink-700 focus:border-teal-500 focus:outline-none">
+                    <option value="">All models</option>
+                    @foreach ($models as $slug)
+                    <option value="{{ $slug }}" @selected($modelFilter===$slug)>{{ $slug }}</option>
+                    @endforeach
+                </select>
+                <noscript>
+                    <button type="submit" class="rounded-lg border border-ink-200 px-2 py-1 text-xs text-ink-700">Apply</button>
+                </noscript>
+            </form>
+        </x-slot:actions>
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[64rem] text-left text-sm">
+            <table class="w-full min-w-[72rem] text-left text-sm">
                 <thead class="border-b border-ink-100 bg-sand-50 text-[11px] tracking-[0.12em] text-ink-500 uppercase">
                     <tr>
                         <th class="px-5 py-3 font-semibold">Request</th>
@@ -88,6 +134,7 @@ $wait = $stats['latency'] >= 1000
                         <th class="px-5 py-3 font-semibold">Round</th>
                         <th class="px-5 py-3 font-semibold">Prompt</th>
                         <th class="px-5 py-3 font-semibold">Reply</th>
+                        <th class="px-5 py-3 font-semibold">Cost</th>
                         <th class="px-5 py-3 font-semibold">Reused</th>
                         <th class="px-5 py-3 font-semibold">Wait</th>
                         <th class="px-5 py-3 font-semibold">Tools called</th>
@@ -118,6 +165,7 @@ $wait = $stats['latency'] >= 1000
                         </td>
                         <td class="px-5 py-3 text-ink-700 tabular-nums">{{ number_format($row->prompt_tokens) }}</td>
                         <td class="px-5 py-3 text-ink-700 tabular-nums">{{ number_format($row->completion_tokens) }}</td>
+                        <td class="px-5 py-3 text-ink-700 tabular-nums whitespace-nowrap">{{ ModelCost::format($row->cost()) }}</td>
                         <td @class(['px-5 py-3 tabular-nums', 'text-emerald-700 font-semibold'=> $row->cached_tokens > 0, 'text-ink-400' => $row->cached_tokens === 0])>
                             {{ number_format($row->cached_tokens) }}
                         </td>
