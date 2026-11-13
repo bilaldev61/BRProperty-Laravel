@@ -6,7 +6,8 @@
     "license": "MIT",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:js": "node --test resources/js/lib/*.test.js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { postJson } from '../lib/api.js'
+import { segments as splitLinks } from '../lib/links.js'
 
 const props = defineProps({
     endpoint: { type: String, required: true },
@@ -102,28 +103,12 @@ async function scrollToEnd() {
 }
 
 /**
- * Turn the URLs the assistant cites into links, without ever rendering its
- * text as HTML - the reply is model output and is treated as untrusted.
- *
- * Models are told to write plain text but do not always listen, so markdown
- * links become real links and **bold** markers are dropped rather than shown.
+ * The reply is model output and is treated as untrusted: only the site's own
+ * pages and WhatsApp become clickable links (see lib/links.js). The origin is
+ * read here so the splitting logic stays pure and testable.
  */
-const LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)/g
-
 function segments(text) {
-    const plain = text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#+\s+/gm, '')
-    const parts = []
-    let last = 0
-
-    for (const match of plain.matchAll(LINK)) {
-        if (match.index > last) parts.push({ text: plain.slice(last, match.index) })
-        const href = match[2] ?? match[3]
-        parts.push({ text: match[1] ?? href, href, internal: href.startsWith(window.location.origin) })
-        last = match.index + match[0].length
-    }
-    if (last < plain.length) parts.push({ text: plain.slice(last) })
-
-    return parts
+    return splitLinks(text, window.location.origin)
 }
 
 function onKeydown(event) {
