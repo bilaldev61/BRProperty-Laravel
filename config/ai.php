@@ -111,7 +111,7 @@ return [
     |
     */
     'local_models' => [
-        // 'qwen3-14b',
+        'qwen3-14B',
     ],
 
     /*

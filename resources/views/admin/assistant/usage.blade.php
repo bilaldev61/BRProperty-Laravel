@@ -47,7 +47,7 @@ $costHint = $stats['unpriced'] ? 'Some models unpriced Â· est.' : 'Token split Ã
         <x-admin.card title="By model" tone="indigo"
             description="Which model answered, and whether it reused anything.">
             <div class="space-y-5">
-                @foreach ($modelGroups as $group)
+                @foreach ($modelGroups as $key => $group)
                 <div>
                     <h3 class="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500">
                         {{ $group['label'] }}
@@ -55,6 +55,11 @@ $costHint = $stats['unpriced'] ? 'Some models unpriced Â· est.' : 'Token split Ã
                     @if (count($group['models']) === 0)
                     <p class="mt-2 text-xs text-ink-400">No requests yet.</p>
                     @else
+                    @if ($key === 'local')
+                    <p class="mt-1 text-xs text-ink-400">Self-hosted: every token is $0 and no cache split is reported, so reused stays 0. The server still reuses the prompt internally for speed.</p>
+                    @elseif ($key === 'free')
+                    <p class="mt-1 text-xs text-ink-400">Free tier: never reports caching and costs nothing, so reused stays 0. Caching only saves money on a paid model.</p>
+                    @endif
                     <ul class="mt-2 space-y-4">
                         @foreach ($group['models'] as $row)
                         <li>

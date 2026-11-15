@@ -270,6 +270,76 @@ every chart has a legend, direct value labels, and a table view.
 
 ---
 
+## The AI assistant and its model
+
+The public chat bubble and the enquiry reply drafts are an **optional** layer. With
+no API key the assistant answers from the listing data and rule layers alone, and
+the rest of the site behaves exactly as it does without AI.
+
+Which model answers is driven entirely by `.env` (read through `config/ai.php`) —
+switching provider needs no code change:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Filled = model layer on. For a local server use any non-empty dummy (e.g. `local`); leaving it blank turns the model layer **off**. |
+| `OPENROUTER_BASE_URL` | API root. Cloud default `https://openrouter.ai/api/v1`; point it at your own server's `/v1` to go local. |
+| `OPENROUTER_MODEL` | Model for the enquiry reply drafts. |
+| `OPENROUTER_CHAT_MODEL` | Model for the public chat (falls back to `OPENROUTER_MODEL`). |
+
+`AI_CHAT_MODEL` is the Anthropic-driver slug only — it is ignored while the
+OpenRouter driver is active. `AI_CHAT_MODEL_ENABLED=false` switches the chat to
+rules-only without touching the key.
+
+### Using a free local model (self-hosted vLLM)
+
+The same connector speaks any OpenAI-compatible server, so a self-hosted model is a
+`.env` change:
+
+```env
+OPENROUTER_API_KEY=local
+OPENROUTER_BASE_URL=http://<your-server>:8000/v1
+OPENROUTER_MODEL=qwen3-14B
+OPENROUTER_CHAT_MODEL=qwen3-14B
+```
+
+**To run a different local model, `.env` is all you change** — set the slug your
+server advertises (its `--served-model-name`) and its URL. One extra line is needed
+only so the admin **Model usage** panel labels it correctly: add the slug to
+`local_models` in `config/ai.php` so it groups under **Local (self-hosted) · $0**.
+Without that line the model still answers, but the panel shows it as "Unpriced".
+
+Serve Qwen3 with tool calling enabled, or the chat (which always sends tools) falls
+back to the rules:
+
+```bash
+vllm serve /path/to/Qwen3-14B-AWQ \
+  --served-model-name qwen3-14B \
+  --host 0.0.0.0 --port 8000 \
+  --quantization awq \
+  --max-model-len 8192 --gpu-memory-utilization 0.90 \
+  --enable-auto-tool-choice --tool-call-parser hermes
+```
+
+- `--enable-auto-tool-choice --tool-call-parser hermes` are required: without them
+  vLLM rejects every tools request with a 400 and the assistant silently answers
+  from the rules instead.
+- `--max-model-len` must exceed the prompt (system + tool menu is roughly 2,400
+  tokens before the visitor even speaks); 2048 is too small, 8192 is a safe floor
+  on a 16 GB card.
+
+Run `php artisan config:clear` after any `.env` edit.
+
+**Local and free models show 0% "reused from cache" — expected, not a fault.**
+Caching discounts the *price* of tokens, and both already cost $0; vLLM also reports
+no cache split (`prompt_tokens_details` is null). It still reuses the prompt
+internally for speed. The cache figures only become meaningful on a paid cloud model.
+
+> A LAN address (e.g. `10.x.x.x`) is reachable from your own network only. To serve
+> public traffic from a self-hosted model you need a tunnel/reverse proxy, and the
+> privacy page must be updated since visitor text no longer flows to OpenRouter.
+
+---
+
 ## Tests
 
 ```bash

@@ -156,6 +156,7 @@ class OpenRouterConnectorTest extends TestCase
         config([
             'ai.driver' => 'openrouter',
             'ai.openrouter.key' => 'sk-or-x',
+            'ai.openrouter.base_url' => 'https://openrouter.ai/api/v1', // ignore any local endpoint in .env
             'ai.chat.effort' => 'high',
         ]);
         Http::fake([self::URL => Http::response(self::reply(['content' => 'Hello.']))]);
@@ -170,6 +171,7 @@ class OpenRouterConnectorTest extends TestCase
         config([
             'ai.driver' => 'openrouter',
             'ai.openrouter.key' => 'sk-or-x',
+            'ai.openrouter.base_url' => 'https://openrouter.ai/api/v1', // ignore any local endpoint in .env
             'ai.chat.max_tool_rounds' => 1,
         ]);
         Http::fake([self::URL => Http::response(self::reply(['content' => null, 'tool_calls' => [
