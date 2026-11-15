@@ -1,0 +1,50 @@
+# Isolated monitoring stack for the BRProperty vLLM load test (Option B).
+# Deliberately separate from the VisionGuardAI stack:
+#   - different project name (brproperty-loadtest) and container names (lt-*)
+#   - different host ports: Prometheus 9091, Grafana 3001
+#   - its own config + volumes, all under k6/
+# VisionGuardAI's 9090/3000 are left untouched.
+#
+#   docker compose -f k6/docker-compose.yml up -d
+#
+name: brproperty-loadtest
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: lt-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    ports:
+      - '9091:9090'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - lt-prom-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: lt-grafana
+    ports:
+      - '3001:3000'
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # anonymous read/admin so the dashboard opens without a login prompt
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - lt-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  lt-prom-data:
+  lt-grafana-data:

@@ -201,7 +201,7 @@ $initials = $me
         <div class="flex min-w-0 flex-1 flex-col">
 
             <header class="sticky top-0 z-30 border-b border-ink-200/70 bg-white/92 backdrop-blur">
-                <div class="flex items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
                     <button type="button" data-drawer-toggle aria-controls="admin-sidebar" aria-expanded="false"
                         aria-label="Open the menu"
                         class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink-200 text-ink-600 transition hover:bg-sand-100 lg:hidden">
@@ -222,10 +222,15 @@ $initials = $me
                         <h1 class="truncate font-display text-xl leading-tight text-ink-900 sm:text-2xl">{{ $heading ?? ($title ?? 'Admin') }}</h1>
                     </div>
 
-                    <div class="flex shrink-0 items-center gap-2">
+                    <div class="order-2 shrink-0 sm:order-3">
                         <x-admin.notifications />
-                        @isset($actions){{ $actions }}@endisset
                     </div>
+
+                    @isset($actions)
+                    <div class="order-3 flex w-full flex-wrap items-center gap-2 sm:order-2 sm:w-auto">
+                        {{ $actions }}
+                    </div>
+                    @endisset
                 </div>
 
                 @if ($intro)

@@ -338,6 +338,47 @@ internally for speed. The cache figures only become meaningful on a paid cloud m
 > public traffic from a self-hosted model you need a tunnel/reverse proxy, and the
 > privacy page must be updated since visitor text no longer flows to OpenRouter.
 
+### Load testing the model (k6)
+
+`k6/` holds a small harness that stress-tests the model server **directly** (no
+Laravel, no rate limiter) so the numbers reflect the GPU alone. It ramps
+1 → 8 → 50 → 100 concurrent users and records every question and answer.
+
+| File | Role |
+| --- | --- |
+| `export-payload.php` | Boots Laravel offline and captures the real request body (system prompt + tool menu) to `payload.json`. Re-run when the prompt or tools change. |
+| `payload.json` | The captured body, replayed as the template for every request. |
+| `model-questions.json` | 50 questions only the model answers (judgement / opinion / comparison / recommendation) — the rule layer answers everything else for free. |
+| `load-model.js` | The main ramp: a random question per request, logs each Q&A, writes `summary.json`. |
+| `load.js` | Simpler variant that replays one fixed payload. |
+| `build-report.php` | Builds `public/load-test-report.html` from the last run. |
+| `docker-compose.yml`, `prometheus.yml`, `grafana/` | An isolated Prometheus (host `:9091`) + Grafana (`:3001`) stack that scrapes vLLM and receives k6's metrics. |
+
+Run from the project root (k6 installed locally; the GPU server is reached over
+the LAN). Commands shown for PowerShell:
+
+```powershell
+# 1. monitoring stack (once)
+docker compose -f k6/docker-compose.yml up -d
+
+# 2. the ramp - records the transcript and stats
+$env:K6_PROMETHEUS_RW_SERVER_URL="http://localhost:9091/api/v1/write"
+$env:K6_PROMETHEUS_RW_TREND_STATS="p(50),p(95),p(99)"
+Remove-Item k6/replies.log -ErrorAction SilentlyContinue   # k6 appends; start fresh
+k6 run --out experimental-prometheus-rw --log-format=raw --log-output=file=k6/replies.log k6/load-model.js
+
+# 3. the HTML report
+php k6/build-report.php
+```
+
+The report (summary cards, plain-English notes, GPU charts and a searchable Q&A
+transcript) is served at <http://localhost:8000/load-test-report.html>, and a
+**Load test report** button appears in **Admin → Assistant chats** whenever the
+file exists. Override the target with `VLLM_URL=http://<host>:8000/v1/chat/completions`.
+
+`replies.log`, `summary.json` and the generated report are local run artifacts
+(gitignored); the harness scripts and question pool are what travel with the repo.
+
 ---
 
 ## Tests

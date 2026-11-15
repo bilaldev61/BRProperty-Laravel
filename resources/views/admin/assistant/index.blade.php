@@ -6,6 +6,9 @@ $tones = ['teal', 'brass', 'indigo', 'clay'];
     intro="What visitors asked the bubble, and how much of it the listings answered on their own. Figures cover the last 30 days.">
     <x-slot:actions>
         <a href="{{ route('admin.assistant.usage') }}" class="btn-outline !px-4 !py-2 text-xs">Model usage</a>
+        @if (file_exists(public_path('load-test-report.html')))
+        <a href="{{ url('load-test-report.html') }}" target="_blank" rel="noopener" class="btn-outline !px-4 !py-2 text-xs">Load test report</a>
+        @endif
         <a href="{{ route('admin.assistant.questions') }}" class="btn-outline !px-4 !py-2 text-xs">Unanswered questions</a>
     </x-slot:actions>
 
