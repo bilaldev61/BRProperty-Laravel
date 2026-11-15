@@ -192,7 +192,18 @@ foreach ($blocks as $b) {
 $total = count($entries);
 $avgTokens = $tokenN ? round($tokenSum / $tokenN) : 0;
 $avgGen = $genN ? round($genSum / $genN) : 0;
+$avgSent = $avgTokens - $avgGen;
 $genThroughput = $msSum > 0 ? $genSum / ($msSum / 1000) : 0;
+// Low-load requests show the per-request write speed without queue wait.
+$fastGen = 0;
+$fastMs = 0;
+foreach ($entries as $e) {
+    if ($e['ms'] < 3000 && is_numeric($e['gen'])) {
+        $fastGen += (int) $e['gen'];
+        $fastMs += $e['ms'];
+    }
+}
+$fastRate = $fastMs > 0 ? $fastGen / ($fastMs / 1000) : 0;
 arsort($toolNames);
 
 $end = (int) strtotime($summary['finished_at'] ?? 'now') + 5;
@@ -209,7 +220,12 @@ $charts .= svgChart('vLLM Running vs Waiting (queue)', [
 ], 'short', $start, $end);
 $charts .= svgChart('vLLM KV Cache Usage', [series('vllm:kv_cache_usage_perc', 'KV cache', $start, $end, $step)], 'percentunit', $start, $end, 1.0);
 $charts .= svgChart('vLLM Completed Requests /s', [series('sum(rate(vllm:request_success_total[1m]))', 'completed/s', $start, $end, $step)], 'reqps', $start, $end);
-$charts .= svgChart('vLLM Generation Tokens/s', [series('sum(rate(vllm:generation_tokens_total[1m]))', 'generated/s', $start, $end, $step)], 'reqps', $start, $end);
+$genRate = series('sum(rate(vllm:generation_tokens_total[1m]))', 'generated/s', $start, $end, $step);
+$gpuPeak = 0.0;
+foreach ($genRate['points'] as $p) {
+    $gpuPeak = max($gpuPeak, $p[1]);
+}
+$charts .= svgChart('vLLM Generation Tokens/s', [$genRate], 'reqps', $start, $end);
 
 $lat = $summary['model_latency_ms'] ?? [];
 $card = fn(string $label, string $value, string $sub = '') =>
@@ -225,10 +241,10 @@ $cards .= $card('Median latency (p50)', fmtMs((float) ($lat['med'] ?? 0)), '50% 
 $cards .= $card('p95 latency', fmtMs((float) ($lat['p95'] ?? 0)), '95% faster than this');
 $cards .= $card('p99 latency', fmtMs((float) ($lat['p99'] ?? 0)), '99% faster than this');
 $cards .= $card('Max latency', fmtMs((float) ($lat['max'] ?? 0)), 'the single slowest request');
-$cards .= $card('Avg tokens / turn', (string) $avgTokens, 'prompt + tools + reply');
-$cards .= $card('Tokens generated', number_format($genSum), 'output tokens, all turns');
-$cards .= $card('Avg output / turn', (string) $avgGen, 'generated tokens per reply');
-$cards .= $card('Output throughput', number_format($genThroughput, 1) . ' tok/s', 'generated tokens per request-second');
+$cards .= $card('Avg sent / turn', (string) $avgSent, 'rules + tool menu + question (input)');
+$cards .= $card('Tokens written', number_format($genSum), 'output tokens, all turns');
+$cards .= $card('Avg written / turn', (string) $avgGen, 'the reply the model wrote (output)');
+$cards .= $card('Avg write speed / request', number_format($genThroughput, 1) . ' tok/s', 'under load, includes queue wait');
 
 $toolList = '';
 foreach ($toolNames as $name => $n) {
@@ -243,8 +259,8 @@ foreach ($entries as $e) {
     $transcript .= '<article class="qa" data-type="' . $e['type'] . '" data-text="' . $search . '">'
         . '<div class="qh"><span class="meta">vu ' . $e['vu'] . ' &middot; iter ' . $e['iter'] . '</span>'
         . '<span class="badge b-lat">' . fmtMs($e['ms']) . '</span>'
-        . '<span class="badge b-tok">' . esc($e['tokens']) . ' tok</span>'
-        . '<span class="badge b-tok">' . esc($e['gen']) . ' out</span>'
+        . '<span class="badge b-tok">' . esc($e['tokens']) . ' total</span>'
+        . '<span class="badge b-tok">' . esc($e['gen']) . ' written</span>'
         . '<span class="badge ' . $finClass . '">' . esc($e['finish']) . '</span></div>'
         . '<div class="q"><span class="tag">Q</span>' . esc($e['q']) . '</div>'
         . '<div class="a"><span class="tag">A</span><span class="atext">' . esc($e['a']) . '</span></div>'
@@ -318,14 +334,22 @@ $notes = <<<'HTML'
 <ul>
   <li><b>prose + tool can exceed the request count.</b> A single model response can contain <i>both</i> text and a tool call, so the two counts overlap &mdash; they are not a clean split of the total. The transcript filters by finish reason instead.</li>
   <li><b>Why latency climbs.</b> One GPU keeps roughly 4&ndash;8 generations running at once (the KV-cache ceiling). Past that, requests <i>queue</i>: median (p50) is the typical wait, p95/p99 are the slow tail (95%/99% of requests were faster), and max is the single worst request &mdash; not the same as p99. Nothing fails &mdash; it just waits.</li>
-  <li><b>~2,000 tokens per turn.</b> Every model turn re-sends the system prompt (~1,630 tok) + the tool definitions (~810) + the question + the answer. Rule-answered questions cost 0 tokens; these model-only questions are the paid path.</li>
+  <li><b>~2,000 tokens per turn.</b> Every model turn re-sends the system prompt (~1,630 tok) + the tool definitions (~810) + the question &mdash; that is the <i>sent</i> side. The reply is <i>written</i> fresh on top. Rule-answered questions cost 0 tokens; these model-only questions are the paid path.</li>
   <li><b>Finish reason.</b> <code>stop</code> = the model wrote a prose answer. <code>tool_calls</code> = it asked to run a tool (<code>search_properties</code> / <code>get_property</code> / <code>save_lead</code>) before answering &mdash; exactly what the comparison/recommendation questions are meant to trigger.</li>
   <li><b>Tool rows show a request, not an answer.</b> The harness sends one request per question and never runs the tool, so a <code>tool_calls</code> row shows the tool the model asked for plus its arguments. The final prose answer needs a second round (run the tool, send the result back) &mdash; that round is the Laravel app's job, not this GPU-only test.</li>
-  <li><b>Generated vs prompt tokens.</b> &ldquo;Tokens generated&rdquo; counts only the model's output (completion tokens); the ~2,000-token prompt is input re-sent each turn. Output is what the GPU decodes token-by-token, so it drives the generation speed.</li>
+  <li><b>Sent + written = total.</b> Each row's <i>total</i> badge is everything in the exchange: the <i>sent</i> input (rules + tool menu + question, ~{SENT} tok) plus the <i>written</i> output (the reply, ~{WRITTEN} tok). So a row reading 1,994 total / 50 written means the 50 are <i>part of</i> the 1,994, not on top of it. Written is what the GPU decodes token-by-token, so it drives generation speed.</li>
+  <li><b>&ldquo;Cached&rdquo; is input-only, and reads 0 here.</b> Caching can only reuse the <i>sent</i> prefix (identical rules + tool menu across requests); the reply is always written fresh. Local vLLM does reuse the prefix internally for speed, but reports no cached-token counts, so the admin cache cards show 0 &mdash; expected, not broken. Only paid cloud models report cached tokens.</li>
+  <li><b>Write speed: one request vs the whole GPU.</b> &ldquo;Avg write speed / request&rdquo; divides written tokens by each request's full wall-clock time &mdash; queue wait included &mdash; so the congested phases drag it far below the GPU's real speed. In this run the fast low-load requests wrote at {FAST}, while the GPU's total output peaked at {PEAK} across all concurrent replies (Generation Tokens/s chart). The slow tail is waiting in line, not slow writing.</li>
   <li><b>failed_rate 0%.</b> No HTTP errors: every request returned a valid model response, even at 100 concurrent users.</li>
   <li><b>p99 in summary.json.</b> The first run omitted p99 (k6's default summary stats leave it out); the script now sets <code>summaryTrendStats</code> so it appears.</li>
 </ul>
 HTML;
+$notes = strtr($notes, [
+    '{SENT}' => number_format($avgSent),
+    '{WRITTEN}' => (string) $avgGen,
+    '{FAST}' => $fastRate > 0 ? '~' . number_format($fastRate, 1) . ' tok/s' : 'n/a',
+    '{PEAK}' => $gpuPeak > 0 ? '~' . number_format($gpuPeak) . ' tok/s' : 'unavailable (Prometheus down)',
+]);
 
 $why = <<<'HTML'
 <p>These questions are deliberately the ones that <b>reach the AI</b>. The assistant answers in a ladder &mdash;
@@ -377,7 +401,7 @@ $html = '<!doctype html><html lang="en"><head><meta charset="utf-8">'
 
 file_put_contents(OUT, $html);
 
-echo 'Parsed ' . $total . ' answers (' . $prose . ' prose / ' . $tool . ' tool), avg ' . $avgTokens . " tok/turn\n";
+echo 'Parsed ' . $total . ' answers (' . $prose . ' prose / ' . $tool . ' tool), avg ' . $avgSent . ' sent + ' . $avgGen . ' written = ' . $avgTokens . " total tok/turn\n";
 echo 'Tool calls: ' . (implode(', ', array_map(fn($k, $v) => "$k=$v", array_keys($toolNames), $toolNames)) ?: 'none') . "\n";
 echo 'Wrote ' . OUT . ' (' . number_format(strlen($html)) . " bytes)\n";
 echo "Open: http://localhost:8000/load-test-report.html\n";
