@@ -127,6 +127,23 @@ class Property extends Model
             });
     }
 
+    /**
+     * Listings with a recorded landmark of this nearby type. Distances are free
+     * text ("15 min drive", "500 m"), so proximity means the landmark is on the
+     * record, not a radius. The JSON test is dialect-specific: partial-object
+     * containment reads differently on SQLite than on MySQL/MariaDB.
+     */
+    public function scopeNearbyType(Builder $query, string $type): Builder
+    {
+        $sqlite = $query->getConnection()->getDriverName() === 'sqlite';
+
+        return $query->whereNotNull('nearby')->when(
+            $sqlite,
+            fn($q) => $q->whereRaw("exists (select 1 from json_each(nearby) where json_extract(value, '$.type') = ?)", [$type]),
+            fn($q) => $q->whereRaw("json_contains(nearby, json_object('type', ?))", [$type]),
+        );
+    }
+
     public function heroImage(): ?PropertyImage
     {
         return $this->images->first();

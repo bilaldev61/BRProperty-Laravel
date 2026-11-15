@@ -43,10 +43,35 @@ class RulesSearch
     private const BROWSE_NOUN = '/\b(propert\w*|listings?|homes?|houses?|villas?|apartments?|flats?|options?|areas?|sale|rent|stock|inventory)\b/';
     private const BROWSE_PHRASE = '/\bwhat do you have\b|\bwhat have you got\b|\bwhat is available\b|\bwhats available\b|\banything else\b|\bsomething else\b|\bmore in other\b|\bother areas?\b|\bmore options?\b|\bshow me (?:more|all|other|listings|properties|homes|houses|villas|apartments|flats|options)\b/';
 
-    /** Explicitly "not this one" - the only browses that drop the listing on screen. */
+    /** Explicit "others" wording - browses that drop the listing on screen. */
     private const OTHERS_WORD = '/\b(other|another|different|alternative|else|more)\b/';
 
-    /** A bare yes after an offer to widen - the visitor taking us up on it. */
+    /** The landmark vocabulary, bound to the types recorded in the nearby JSON. */
+    private const LANDMARKS = [
+        'metro'    => '/\b(metro|monorail|train|subway|public transport)\b/',
+        'mall'     => '/\b(mall|shopping (?:centre|center))\b/',
+        'school'   => '/\b(school|nursery)\b/',
+        'hospital' => '/\b(hospital|clinic|medical (?:centre|center))\b/',
+        'beach'    => '/\b(beach|waterfront)\b/',
+        'park'     => '/\b(park|open space)\b/',
+        'golf'     => '/\bgolf\b/',
+        'airport'  => '/\bairport\b/',
+    ];
+
+    /** Word-boundaried so "linear" never reads as "near"; "enear" is a live typo. */
+    private const PROXIMITY_PREP = '/\b(?:e?near(?:by)?|close to|walking distance(?: to)?)\b/';
+
+    /**
+     * A find signal, so "any metro nearby?" stays a question about the listing
+     * on screen. Bare any/all/every are deliberately not a proximity signal.
+     */
+    private const PROXIMITY_INTENT = '/\b(?:f[iy]nd\w*|look(?:ing)?|show me|search|want|need|those|thos|ones|them|homes|houses|villas|apartments|flats|properties|listings|options|places|other|another|more|different|alternative|else)\b/';
+
+    /**
+     * A bare yes after an offer - the visitor taking us up on it. Shared with the
+     * repeat guard: an agreement answers whatever was just offered, so it is never
+     * a re-ask of the previous question even when the same word is typed twice.
+     */
     private const AGREEMENT = '/^(?:yes+|yeah|yep|yup|sure|ok|okay|okey|please|pls|go ahead|why not)\b/';
 
     /** The wording of an offer to look beyond the current area or filters. */
@@ -157,11 +182,11 @@ class RulesSearch
             return null;
         }
 
-        $browse = self::isCatalogueBrowse($text);
+        $browse = self::isCatalogueBrowse($text) || self::isProximityBrowse($text) || self::isRejection($text);
 
         // A bare yes takes up the offer to widen - but never over a judgement.
         $agreed = ! self::isJudgement($text)
-            && preg_match(self::AGREEMENT, $text)
+            && self::isAgreement($text)
             && $this->offeredWiden($conversation);
 
         if (! $browse && ! $agreed) {
@@ -173,7 +198,7 @@ class RulesSearch
         // Drop the listing on screen only when the visitor asks for something
         // other than it. "All properties" is the whole book, this one included;
         // "any houses under 700k" is a filter the current listing may match.
-        if ($agreed || preg_match(self::OTHERS_WORD, $text)) {
+        if ($agreed || preg_match(self::OTHERS_WORD, $text) || self::isRejection($text)) {
             $criteria['exclude'] = $property->slug;
         }
 
@@ -194,6 +219,42 @@ class RulesSearch
 
         return (bool) ((preg_match(self::BROWSE_WORD, $text) && preg_match(self::BROWSE_NOUN, $text))
             || preg_match(self::BROWSE_PHRASE, $text));
+    }
+
+    /**
+     * A browse for listings near a recorded landmark, not a question about the
+     * listing on screen: a find signal, a proximity word and a landmark. Shared
+     * with QuickAnswers so "find those near metro" reaches the search.
+     */
+    public static function isProximityBrowse(string $text): bool
+    {
+        return (bool) (preg_match(self::PROXIMITY_INTENT, $text)
+            && preg_match(self::PROXIMITY_PREP, $text)
+            && self::landmarkType($text) !== null);
+    }
+
+    /** "Not this one" drops the listing on screen; "not this expensive" does not. */
+    public static function isRejection(string $text): bool
+    {
+        return (bool) preg_match('/\bnot\s+(?:this|that|these|those)\s+one\b|\bnot\s+(?:this|that|these|those)\s*$|\b(?:something|anything)\s+else\b/', $text);
+    }
+
+    /** The first landmark type named in the message, or null. */
+    private static function landmarkType(string $text): ?string
+    {
+        foreach (self::LANDMARKS as $type => $pattern) {
+            if (preg_match($pattern, $text)) {
+                return $type;
+            }
+        }
+
+        return null;
+    }
+
+    /** A bare acknowledgement - "yes", "ok", "sure" - rather than a new question. */
+    public static function isAgreement(string $text): bool
+    {
+        return (bool) preg_match(self::AGREEMENT, $text);
     }
 
     /** Judgement, or "all about this" - the listing itself, never a browse. */
@@ -284,6 +345,12 @@ class RulesSearch
 
         if (($area = $this->matchingArea($text)) !== null) {
             $criteria['area'] = $area;
+        }
+
+        // Intent-bound: only a proximity browse gains the landmark filter, so
+        // "is there a metro nearby?" never turns into a search criterion.
+        if (self::isProximityBrowse($text)) {
+            $criteria['nearby'] = self::landmarkType($text);
         }
 
         return $criteria;
@@ -425,10 +492,23 @@ class RulesSearch
             default => null,
         };
 
+        $nearby = match ($criteria['nearby'] ?? null) {
+            'metro'    => 'near metro',
+            'mall'     => 'near a mall',
+            'school'   => 'near a school',
+            'hospital' => 'near a hospital',
+            'beach'    => 'near the beach',
+            'park'     => 'near a park',
+            'golf'     => 'near golf',
+            'airport'  => 'near the airport',
+            default    => null,
+        };
+
         $parts = array_filter([
             isset($criteria['min_bedrooms']) ? $criteria['min_bedrooms'] . '+ bedroom' : null,
             isset($criteria['type']) ? ($nouns[$criteria['type']] ?? Str::lower(config('agent.property_types.' . $criteria['type']))) : null,
             $criteria['area'] ?? null ? 'in ' . $criteria['area'] : null,
+            $nearby,
             $price,
             ($criteria['rent'] ?? false) ? 'to rent' : null,
         ]);

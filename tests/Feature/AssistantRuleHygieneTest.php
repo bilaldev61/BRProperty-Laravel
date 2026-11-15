@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\Property;
+use App\Services\Assistant\RulesSearch;
 use App\Support\Ai\AiConnector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -439,5 +440,79 @@ class AssistantRuleHygieneTest extends TestCase
 
         $this->assertSame('MODEL REPLY', $reply);
         $this->assertSame('ai', $this->lastAnsweredBy());
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Proximity browses and rejections - the detectors
+    |--------------------------------------------------------------------------
+    */
+
+    /** @return array<string, array{0: string, 1: bool}> */
+    public static function proximityBrowses(): array
+    {
+        return [
+            'find those near metro'        => ['find those near metro station', true],
+            'the live typo'                => ['i findinf thos enear metro station', true],
+            'show me homes near a mall'    => ['show me homes near a mall', true],
+            'other homes near metro'       => ['other homes near metro', true],
+            'walking distance to school'   => ['looking for villas walking distance to school', true],
+            'close to the beach'           => ['want apartments close to the beach', true],
+            'monorail is metro'            => ['find those near the monorail', true],
+            'public transport is metro'    => ['show me places near public transport', true],
+            'shopping centre is mall'      => ['looking for flats near shopping centre', true],
+            'close to hospital'            => ['need homes close to hospital', true],
+            'near golf'                    => ['find villas near golf', true],
+            'near the airport'             => ['looking for apartments near the airport', true],
+            'near the park'                => ['want places near the park', true],
+            'waterfront is beach'          => ['search homes near waterfront', true],
+            'bare any is not a find'       => ['any metro nearby?', false],
+            'a listing fact'               => ['is there a metro nearby?', false],
+            'nearest is not near'          => ['nearest metro', false],
+            'about this property'          => ['what is near this property?', false],
+            'a stated filter, no landmark' => ['any houses under 700k', false],
+            'parking is not a landmark'    => ['do you have any parking', false],
+            'no landmark named'            => ['find those near the office', false],
+            'no proximity word'            => ['find those metro station', false],
+            'linear is not near'           => ['i want a linear park view', false],
+            'which mall is close to it'    => ['which mall is close to it?', false],
+        ];
+    }
+
+    #[DataProvider('proximityBrowses')]
+    public function test_proximity_browse_detection(string $text, bool $expected): void
+    {
+        $this->assertSame($expected, RulesSearch::isProximityBrowse($text), $text);
+    }
+
+    /** @return array<string, array{0: string, 1: bool}> */
+    public static function rejections(): array
+    {
+        return [
+            'not this one'        => ['not this one', true],
+            'not that one'        => ['not that one', true],
+            'not these'           => ['not these', true],
+            'not those'           => ['not those', true],
+            'not this at the end' => ['no not this', true],
+            'not this one please' => ['not this one please', true],
+            'something else'      => ['something else', true],
+            'anything else'       => ['anything else', true],
+            'not this expensive'  => ['not this expensive', false],
+            'not that big'        => ['not that big', false],
+            'not cheap'           => ['this one is not cheap', false],
+            'nothing else'        => ['nothing else', false],
+        ];
+    }
+
+    #[DataProvider('rejections')]
+    public function test_rejection_detection(string $text, bool $expected): void
+    {
+        $this->assertSame($expected, RulesSearch::isRejection($text), $text);
+    }
+
+    public function test_the_existing_browse_detector_is_unchanged_by_the_proximity_words(): void
+    {
+        $this->assertTrue(RulesSearch::isCatalogueBrowse('any houses under 700k'));
+        $this->assertFalse(RulesSearch::isCatalogueBrowse('do you have any parking'));
     }
 }

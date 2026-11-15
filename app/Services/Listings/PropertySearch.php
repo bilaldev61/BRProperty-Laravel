@@ -27,6 +27,7 @@ class PropertySearch
             'keywords'     => ['nullable', 'string', 'max:80'],
             'sold'         => ['nullable', 'boolean'],
             'rent'         => ['nullable', 'boolean'],
+            'nearby'       => ['nullable', 'string', Rule::in(['metro', 'mall', 'school', 'hospital', 'beach', 'park', 'golf', 'airport'])],
             'exclude'      => ['nullable', 'string', 'max:255'],
         ];
     }
@@ -57,7 +58,9 @@ class PropertySearch
                 ($isRent ? 'rent_min' : 'min') => $criteria['min_price'] ?? null,
                 ($isRent ? 'rent_max' : 'max') => $criteria['max_price'] ?? null,
                 'q'    => isset($criteria['keywords']) ? self::stripWildcards($criteria['keywords']) : null,
-            ]);
+            ])
+            // "Near metro" is the recorded landmark, not a distance cutoff.
+            ->when($criteria['nearby'] ?? null, fn($q, $v) => $q->nearbyType($v));
 
         $total = (clone $query)->count();
 

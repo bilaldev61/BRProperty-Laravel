@@ -6,6 +6,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\Property;
 use App\Models\User;
+use App\Services\Assistant\RulesSearch;
 use App\Support\Ai\AiConnector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -332,6 +333,50 @@ class AssistantQuickAnswersTest extends TestCase
         $this->assertSame(1, $this->ai->calls);
     }
 
+    public function test_creative_writing_is_declined_on_a_listing_page(): void
+    {
+        // The listing-page bypass used to hand "write story on dubai" to the
+        // model, which wrote the story instead of declining. A creative-writing
+        // request names no property, so it is declined here on any page.
+        $reply = $this->ask('write story on dubai', $this->property());
+
+        $this->assertStringContainsString('only help with property', $reply);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertSame('rule:off_topic', $this->lastReply()->answered_by);
+    }
+
+    public function test_general_knowledge_is_declined_on_a_listing_page(): void
+    {
+        // "RULER OF DUBAI" is three words, so the continuation exemption and the
+        // listing bypass both let it through to the model, which answered it.
+        $reply = $this->ask('RULER OF DUBAI', $this->property());
+
+        $this->assertStringContainsString('only help with property', $reply);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertSame('rule:off_topic', $this->lastReply()->answered_by);
+    }
+
+    public function test_a_property_question_is_not_caught_by_the_off_topic_intent(): void
+    {
+        // The general-knowledge pattern starts with "who/what", but "who is the
+        // owner" is about the listing: the scope allowlist guards it, so it still
+        // reaches the model rather than being declined.
+        $reply = $this->ask('who is the owner', $this->property());
+
+        $this->assertSame('MODEL REPLY', $reply);
+        $this->assertSame(1, $this->ai->calls);
+        $this->assertNotSame('rule:off_topic', $this->lastReply()->answered_by);
+    }
+
+    public function test_a_creative_request_that_names_the_property_is_not_gated(): void
+    {
+        // The denylist is guarded by the allowlist: a poem about "this villa"
+        // carries a property word, so the off-topic gate stands down.
+        $this->ask('write me a poem about this villa', $this->property());
+
+        $this->assertNotSame('rule:off_topic', $this->lastReply()->answered_by);
+    }
+
     public function test_distress_reaches_the_model_and_stands_the_gate_down_for_the_thread(): void
     {
         $this->ask('i am kidnapeed');
@@ -478,6 +523,141 @@ class AssistantQuickAnswersTest extends TestCase
         // hold would be a confident wrong answer, so the model gets it.
         $this->assertSame('MODEL REPLY', $this->ask('Please write a short poem about a house.', $property));
         $this->assertSame(1, $this->ai->calls);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Proximity browses and escaping the listing on screen
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_find_those_near_metro_searches_rather_than_answering_the_listing_fact(): void
+    {
+        $page = $this->property([
+            'title' => 'Canal studio in Business Bay',
+            'suburb' => 'Business Bay',
+            'type' => 'apartment',
+            'bedrooms' => 1,
+            'nearby' => [['type' => 'metro', 'name' => 'Business Bay Metro', 'distance' => '5 min walk']],
+        ]);
+        $other = $this->property([
+            'title' => 'Marina flat by the metro',
+            'suburb' => 'Dubai Marina',
+            'type' => 'apartment',
+            'bedrooms' => 2,
+            'nearby' => [['type' => 'metro', 'name' => 'Dubai Marina Metro', 'distance' => '8 min walk']],
+        ]);
+
+        $reply = $this->ask('find those near metro station', $page);
+
+        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString('near metro', $reply);
+        $this->assertStringContainsString($other->title, $reply);
+        // The landmark fact about the page is not what was asked for.
+        $this->assertStringNotContainsString('Business Bay Metro', $reply);
+    }
+
+    public function test_the_live_typo_still_reaches_the_proximity_search(): void
+    {
+        $page = $this->property([
+            'title' => 'Canal studio in Business Bay',
+            'suburb' => 'Business Bay',
+            'nearby' => [['type' => 'metro', 'name' => 'Business Bay Metro', 'distance' => '5 min walk']],
+        ]);
+        $this->property([
+            'title' => 'Marina flat by the metro',
+            'suburb' => 'Dubai Marina',
+            'nearby' => [['type' => 'metro', 'name' => 'Dubai Marina Metro', 'distance' => '8 min walk']],
+        ]);
+
+        $reply = $this->ask('i findinf thos enear metro station', $page);
+
+        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertStringContainsString('near metro', $reply);
+    }
+
+    public function test_show_me_homes_near_a_mall_filters_on_the_recorded_mall(): void
+    {
+        $page = $this->property([
+            'nearby' => [['type' => 'metro', 'name' => 'Business Bay Metro', 'distance' => '5 min walk']],
+        ]);
+        $byMall = $this->property([
+            'title' => 'Villa by the mall',
+            'nearby' => [['type' => 'mall', 'name' => 'Dubai Hills Mall', 'distance' => '6 min drive']],
+        ]);
+
+        $reply = $this->ask('show me homes near a mall', $page);
+
+        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString('near a mall', $reply);
+        $this->assertStringContainsString($byMall->title, $reply);
+        $this->assertStringNotContainsString($page->title, $reply);
+    }
+
+    public function test_not_this_one_drops_the_listing_on_screen(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah']);
+        $other = $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        $reply = $this->ask('not this one', $page);
+
+        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString($other->title, $reply);
+        $this->assertStringNotContainsString($page->slug, $reply);
+        $this->assertStringNotContainsString($page->title, $reply);
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function nearbyFactQuestions(): array
+    {
+        return [
+            'is there a metro nearby' => ['Is there a metro nearby?', 'rule:listing_nearby_metro'],
+            'nearest metro'           => ['nearest metro', 'rule:listing_nearby_metro'],
+            'what is near this'       => ['What is near this property?', 'rule:listing_nearby_all'],
+        ];
+    }
+
+    #[DataProvider('nearbyFactQuestions')]
+    public function test_a_nearby_question_about_the_listing_stays_a_listing_fact(string $question, string $rule): void
+    {
+        $page = $this->property([
+            'suburb' => 'Business Bay',
+            'nearby' => [['type' => 'metro', 'name' => 'Business Bay Metro', 'distance' => '5 min walk']],
+        ]);
+
+        $reply = $this->ask($question, $page);
+
+        $this->assertSame($rule, $this->lastReply()->answered_by);
+        $this->assertStringContainsString('Business Bay Metro', $reply);
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    public function test_a_bare_quantifier_nearby_question_is_not_a_proximity_search(): void
+    {
+        $page = $this->property([
+            'nearby' => [['type' => 'metro', 'name' => 'Business Bay Metro', 'distance' => '5 min walk']],
+        ]);
+
+        $reply = $this->ask('any metro nearby?', $page);
+
+        // "any" alone is not a find signal: this must not become a listings dump.
+        $this->assertNotSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertNotSame('rule:search_none', $this->lastReply()->answered_by);
+        $this->assertStringNotContainsString('I found', $reply);
+        $this->assertFalse(RulesSearch::isProximityBrowse('any metro nearby'));
+    }
+
+    public function test_not_this_expensive_is_not_a_rejection(): void
+    {
+        $reply = $this->ask('not this expensive', $this->property());
+
+        $this->assertNotSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertNotSame('rule:search_none', $this->lastReply()->answered_by);
+        $this->assertStringNotContainsString('I found', $reply);
+        $this->assertFalse(RulesSearch::isRejection('not this expensive'));
     }
 
     public function test_listing_questions_off_a_listing_page_go_to_the_model(): void

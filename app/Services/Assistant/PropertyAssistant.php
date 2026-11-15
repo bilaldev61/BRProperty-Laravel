@@ -180,11 +180,13 @@ class PropertyAssistant
    *
    * Only the text decides it: a repeat is answered differently rather than
    * re-run through the rules and the model. Small talk is left alone - a
-   * visitor saying hello twice is not stuck on an answer.
+   * visitor saying hello twice is not stuck on an answer. An agreement ("yes",
+   * "ok") is left alone too: it answers whatever the assistant just offered, so
+   * two yeses in a row are taking up two different offers, not re-asking once.
    */
   private function repeats(ChatConversation $conversation, string $message): bool
   {
-    if ($this->quick->isSmallTalk($message)) {
+    if ($this->quick->isSmallTalk($message) || RulesSearch::isAgreement($message)) {
       return false;
     }
 

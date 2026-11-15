@@ -374,7 +374,7 @@ class AssistantTest extends TestCase
         $lead = ['name' => 'Marcus Bell', 'phone' => '5125550198', 'summary' => 'Wants a call.'];
         $fake = $this->fake((new FakeAiConnector())->callsTool('save_lead', $lead)->callsTool('save_lead', $lead));
 
-        $this->ask('Call me')->assertOk();
+        $this->ask('Marcus Bell, 512 555 0198, call me')->assertOk();
 
         $this->assertSame(1, Enquiry::count());
         $this->assertStringContainsString('Already saved', $fake->toolRuns[1]['result']);
@@ -393,6 +393,25 @@ class AssistantTest extends TestCase
         $this->assertSame(0, Enquiry::count());
         $this->assertTrue($fake->toolRuns[0]['failed']);
         $this->assertStringContainsString('phone', $fake->toolRuns[0]['result']);
+    }
+
+    public function test_save_lead_refuses_details_the_visitor_never_typed(): void
+    {
+        // The model invents a name and number just to satisfy the schema after a
+        // bare "call me". The gate must refuse it rather than write a junk lead the
+        // agent cannot act on - the bug behind "Bilal will be in touch" with no details.
+        $fake = $this->fake((new FakeAiConnector('Thanks - Bilal will be in touch.'))->callsTool('save_lead', [
+            'name' => 'John',
+            'phone' => '1234567890',
+            'summary' => 'Interested in a similar property.',
+        ]));
+
+        $this->ask('Call me')->assertOk();
+
+        $this->assertSame(0, Enquiry::count());
+        $this->assertNull(ChatConversation::sole()->enquiry_id);
+        $this->assertTrue($fake->toolRuns[0]['failed']);
+        $this->assertStringContainsString('not typed', $fake->toolRuns[0]['result']);
     }
 
     public function test_unanswered_questions_are_recorded_against_the_listing(): void

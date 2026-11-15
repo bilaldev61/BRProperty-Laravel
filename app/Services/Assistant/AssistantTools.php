@@ -4,6 +4,7 @@ namespace App\Services\Assistant;
 
 use App\Jobs\SendEnquiryConfirmation;
 use App\Models\ChatConversation;
+use App\Models\ChatMessage;
 use App\Models\Enquiry;
 use App\Models\Property;
 use App\Services\Listings\PropertySearch;
@@ -167,6 +168,11 @@ class AssistantTools
 
         $property = $this->findProperty($data['property_slug'] ?? null) ?? $this->conversation->property;
 
+        // The model writes these arguments and has been seen inventing a name and
+        // number just to satisfy the schema. A lead the agent cannot act on is
+        // worse than no lead, so ground the details in what the visitor typed.
+        $this->assertTyped($data['name'], $data['phone']);
+
         $enquiry = DB::transaction(function () use ($data, $property) {
             $enquiry = Enquiry::create([
                 'type'        => $property ? 'property' : 'contact',
@@ -188,6 +194,43 @@ class AssistantTools
 
         return 'Saved. The agent now has their details and this chat. Tell the visitor that '
             . config('agent.name') . ' will be in touch, without promising a time.';
+    }
+
+    /**
+     * Ground the contact details in the visitor's own words: the name and number
+     * must appear in something they typed in this chat. The model may pass details
+     * on, never make them up - a fabricated "John / 1234567890" is a lead the agent
+     * cannot act on and a false promise to the visitor that we already have them.
+     *
+     * @throws ToolFailed
+     */
+    private function assertTyped(string $name, string $phone): void
+    {
+        $this->conversation->loadMissing('messages');
+
+        $typed = $this->conversation->messages
+            ->where('role', ChatMessage::USER)
+            ->pluck('content')
+            ->implode(' ');
+
+        $words = trim(preg_replace('/\s+/', ' ', mb_strtolower($typed)));
+        $digits = preg_replace('/\D/', '', $typed);
+        $phoneDigits = preg_replace('/\D/', '', $phone);
+
+        $nameTyped = str_contains($words, trim(preg_replace('/\s+/', ' ', mb_strtolower($name))));
+        $phoneTyped = $phoneDigits !== '' && str_contains($digits, $phoneDigits);
+
+        if ($nameTyped && $phoneTyped) {
+            return;
+        }
+
+        $missing = ! $nameTyped && ! $phoneTyped
+            ? 'a name or phone number'
+            : (! $nameTyped ? 'that name' : 'that phone number');
+
+        throw new ToolFailed(
+            "The visitor has not typed {$missing} in this chat. Ask them for it and wait for them to type it before saving a lead. Never invent or complete contact details."
+        );
     }
 
     private function findProperty(?string $slug): ?Property

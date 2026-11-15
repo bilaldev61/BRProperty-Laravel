@@ -144,6 +144,16 @@ class QuickAnswers
     private const DISTRESS = '/\b(kidnap\w*|abduct\w*|hostage|emergency|ambulance|police|999|911|in danger|help me|suicid\w*|kill (?:myself|me)|heart attack|trapped|threaten\w*|attacked|bleeding|dying)\b/i';
 
     /**
+     * Intents that are never property business, on any page: writing creative text
+     * and asking general knowledge about the world. A narrow denylist for the
+     * unambiguous cases the listing-page bypass would otherwise hand to the model
+     * to decline (and a 14B model often answers instead). The scope allowlist below
+     * still guards it, so a message carrying a property word ("what is the price",
+     * "who is the owner") or a number is never caught here.
+     */
+    private const OFF_TOPIC_INTENT = '/\b(?:write|compose|create|make|generate|tell|give|sing)\b.{0,40}\b(?:story|poem|essay|joke|song|novel|fiction|tale|rhyme|script|limerick)\b|\b(?:who|whos|what|whats|when|where)\b.{0,40}\b(?:ruler|president|prime minister|king|queen|capital|population|weather|news|visa|flight|currency|language|religion)\b|\b(?:ruler|president|prime minister|king|queen)\s+of\b/i';
+
+    /**
      * Is this business real and licensed? A registration is a legal claim made
      * in the agency's name, so it is answered from config and never inferred.
      */
@@ -173,15 +183,43 @@ class QuickAnswers
             return false;
         }
 
-        $property = $conversation->property;
+        $text = $this->normalise($message);
 
-        // On a listing page every question is about that listing until the
-        // visitor says otherwise, so there is nothing here to gate.
-        if ($property !== null && $property->is_published) {
+        // Distress anywhere in the thread stands the gate down: a later message
+        // in an emergency conversation is not a new off-topic visitor.
+        if (preg_match(self::DISTRESS, $text)) {
             return false;
         }
 
-        $text = $this->normalise($message);
+        $conversation->loadMissing('messages');
+
+        foreach ($conversation->messages->pluck('content') as $said) {
+            if (preg_match(self::DISTRESS, $this->normalise((string) $said))) {
+                return false;
+            }
+        }
+
+        // Creative writing and general knowledge are never property business, on
+        // any page. A listing makes "it" and "this" about the home, but it does
+        // not make "write a story" or "who is the ruler" in scope - so these are
+        // declined here rather than left to the model to decline. The allowlist
+        // guards it: a property word or a number means it is not caught.
+        if (
+            preg_match(self::OFF_TOPIC_INTENT, $text)
+            && ! preg_match(self::IN_SCOPE, $text)
+            && ! preg_match(self::IN_SCOPE_INTENT, $text)
+            && ! preg_match('/\d/', $text)
+        ) {
+            return true;
+        }
+
+        $property = $conversation->property;
+
+        // On a listing page every other question is about that listing until the
+        // visitor says otherwise, so there is nothing more to gate.
+        if ($property !== null && $property->is_published) {
+            return false;
+        }
 
         // A handful of words carries no topic of its own - "tell me more", "is
         // it available". Those are continuations, and the model has the history.
@@ -194,20 +232,9 @@ class QuickAnswers
         if (
             preg_match(self::IN_SCOPE, $text)
             || preg_match(self::IN_SCOPE_INTENT, $text)
-            || preg_match(self::DISTRESS, $text)
             || preg_match('/\d/', $text)
         ) {
             return false;
-        }
-
-        // Distress anywhere in the thread stands the gate down: a later message
-        // in an emergency conversation is not a new off-topic visitor.
-        $conversation->loadMissing('messages');
-
-        foreach ($conversation->messages->pluck('content') as $said) {
-            if (preg_match(self::DISTRESS, $this->normalise((string) $said))) {
-                return false;
-            }
         }
 
         return true;
@@ -254,10 +281,11 @@ class QuickAnswers
             }
         }
 
-        // A catalogue browse ("what do you have for sale", "show me more") is a
-        // search, not a fact about the listing on screen. Hand it to the search
-        // layer, which excludes the page and reads only what the visitor typed.
-        if (RulesSearch::isCatalogueBrowse($text)) {
+        // A catalogue browse ("what do you have for sale", "show me more") or a
+        // proximity browse ("find those near metro") is a search, not a fact
+        // about the listing on screen. Hand it to the search layer, which reads
+        // only what the visitor typed.
+        if (RulesSearch::isCatalogueBrowse($text) || RulesSearch::isProximityBrowse($text)) {
             return null;
         }
 

@@ -184,6 +184,25 @@ class AssistantCostTest extends TestCase
         );
     }
 
+    public function test_a_repeated_agreement_is_not_a_repeat(): void
+    {
+        $fake = $this->fake(new FakeAiConnector('Would you like me to save your interest?'));
+        $conversation = ChatConversation::create(['property_id' => $this->property()->id]);
+
+        $this->say($conversation, 'Tell me what I should check before buying');
+        $this->say($conversation, 'yes');
+        $third = $this->say($conversation, 'yes');
+
+        // The second yes takes up a new offer; it is not the first question again,
+        // so it must not be deflected with "I have already answered that just above".
+        $this->assertStringNotContainsString('already answered', $third);
+        $this->assertSame(3, $fake->calls);
+        $this->assertNotSame(
+            'rule:repeat',
+            $conversation->messages()->where('role', ChatMessage::ASSISTANT)->reorder('id', 'desc')->value('answered_by'),
+        );
+    }
+
     public function test_punctuation_and_capitals_do_not_make_it_a_new_question(): void
     {
         $fake = $this->fake(new FakeAiConnector('It is a two-bedroom apartment over the canal.'));
