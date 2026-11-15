@@ -56,7 +56,7 @@ $costHint = $stats['unpriced'] ? 'Some models unpriced · est.' : 'Token split �
                     <p class="mt-2 text-xs text-ink-400">No requests yet.</p>
                     @else
                     @if ($key === 'local')
-                    <p class="mt-1 text-xs text-ink-400">Self-hosted: every token is $0 and no cache split is reported, so reused stays 0. The server still reuses the prompt internally for speed.</p>
+                    <p class="mt-1 text-xs text-ink-400">Self-hosted: every token is $0 — cache reads and writes are free, writes automatic. Counts show only if the server runs with --enable-prompt-tokens-details; otherwise the cards stay 0 while the prompt is still reused internally for speed.</p>
                     @elseif ($key === 'free')
                     <p class="mt-1 text-xs text-ink-400">Free tier: never reports caching and costs nothing, so reused stays 0. Caching only saves money on a paid model.</p>
                     @endif

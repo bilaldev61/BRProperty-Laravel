@@ -125,6 +125,37 @@ class OpenRouterConnectorTest extends TestCase
             && ! isset($r['reasoning_effort']));
     }
 
+    public function test_vllm_cache_details_land_in_the_usage_split(): void
+    {
+        Http::fake([
+            self::URL => Http::sequence()
+                ->push(self::reply(['content' => 'Cold.']) + ['usage' => [
+                    'prompt_tokens' => 42,
+                    'completion_tokens' => 8,
+                    'total_tokens' => 50,
+                    'prompt_tokens_details' => ['cached_tokens' => 0, 'created_cache_tokens' => 32],
+                ]])
+                ->push(self::reply(['content' => 'Warm.']) + ['usage' => [
+                    'prompt_tokens' => 42,
+                    'completion_tokens' => 8,
+                    'total_tokens' => 50,
+                    'prompt_tokens_details' => ['cached_tokens' => 32, 'created_cache_tokens' => 0],
+                ]]),
+        ]);
+
+        $connector = $this->connector();
+
+        $connector->complete('S', 'P');
+        $cold = $connector->lastRequests()[0];
+        $this->assertSame(0, $cold['cached_tokens']);
+        $this->assertSame(32, $cold['cache_write_tokens']);
+
+        $connector->complete('S', 'P');
+        $warm = $connector->lastRequests()[0];
+        $this->assertSame(32, $warm['cached_tokens']);
+        $this->assertSame(0, $warm['cache_write_tokens']);
+    }
+
     public function test_the_chat_effort_rides_on_every_round(): void
     {
         Http::fake([

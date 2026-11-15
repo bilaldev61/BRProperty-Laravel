@@ -225,7 +225,9 @@ class OpenRouterConnector implements AiConnector
         $prompt     = (int) $response->json('usage.prompt_tokens', 0);
         $completion = (int) $response->json('usage.completion_tokens', 0);
         $cached     = (int) $response->json('usage.prompt_tokens_details.cached_tokens', 0);
-        $written    = (int) $response->json('usage.prompt_tokens_details.cache_write_tokens', 0);
+        // vLLM names the write side created_cache_tokens, not cache_write_tokens.
+        $written    = (int) $response->json('usage.prompt_tokens_details.cache_write_tokens', 0)
+            ?: (int) $response->json('usage.prompt_tokens_details.created_cache_tokens', 0);
 
         $this->tokens += (int) $response->json('usage.total_tokens', $prompt + $completion);
 
