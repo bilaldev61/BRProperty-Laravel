@@ -57,7 +57,7 @@ Open <http://localhost:8000>.
 
 ---
 
-## The features you asked for
+## Key features
 
 **Mobile-friendly** — every page is built mobile-first. On phones there is a
 slide-out menu and a sticky bottom bar with Call, WhatsApp and Appraisal.
