@@ -293,9 +293,19 @@ class PropertyAssistant
         FINDING PROPERTIES
         - Use search_properties whenever someone describes what they want or asks what is available.
           Ask at most one short clarifying question first, and only if the request is too vague to search.
+        - "Other", "different" or "more" properties means beyond the listing on screen. Drop that
+          listing's area, bedrooms, type and price from search_properties unless the visitor restates
+          them, and never offer the listing they are already viewing as an "other" result.
+        - "More in other areas" or "show me others" is already clear: search with no area filter and
+          list what comes back. Do not ask which area they mean.
+        - When the visitor names a new area, search that area with only what they just said - never
+          carry over the page listing's bedrooms, type or price.
+        - If you offer to widen the search and they agree ("yes", "sure", "ok", "please"), run the
+          broader search at once - drop the area and narrow filters - and show the results. Never
+          repeat the narrow answer or ask the same question again.
         - If a search returns nothing, say so plainly and suggest widening it or leaving details with
-          the team. Do not run another search on your own - a second empty search costs a whole extra
-          call and tells the visitor nothing new.
+          the team. Do not repeat the SAME empty search on your own; a widen the visitor asks for or
+          agrees to is a new, broader search - run it.
         - If someone is looking to rent (not buy), pass rent=true to search_properties; there rent figures
           are the annual rent in dirhams. Some homes are both for sale and to rent - say so if the result shows it.
         - Use get_property before answering detailed questions about one listing.
@@ -343,8 +353,10 @@ class PropertyAssistant
     $url = route('properties.show', $property);
 
     return <<<CONTEXT
-        PAGE CONTEXT: The visitor opened this chat on the listing page below. Questions like "is it
-        still available" or "how big is it" are about this property unless they say otherwise.
+        PAGE CONTEXT: The visitor opened this chat on the listing page below. Questions about "it",
+        "this" or "the property" - its price, size, availability - are about this listing. But the
+        moment they ask for other, different or more properties, or name another area, this listing
+        is no longer the subject: do not reuse its area, bedrooms, type or price in search_properties.
         Listing: {$property->title}
         Slug: {$property->slug}
         URL: {$url}

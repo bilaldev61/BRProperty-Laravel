@@ -110,7 +110,7 @@ class AssistantCostTest extends TestCase
 
         // An empty search answered twice is a whole extra billed round; the
         // instruction that prevents it must be fixed text, not live data.
-        $this->assertStringContainsString('Do not run another search on your own', substr($prompt, 0, $marker));
+        $this->assertStringContainsString('Do not repeat the SAME empty search on your own', substr($prompt, 0, $marker));
     }
 
     /*

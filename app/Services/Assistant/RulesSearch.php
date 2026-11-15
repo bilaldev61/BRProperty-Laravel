@@ -3,6 +3,7 @@
 namespace App\Services\Assistant;
 
 use App\Models\ChatConversation;
+use App\Models\ChatMessage;
 use App\Services\Listings\PropertySearch;
 use App\Support\CatalogueCache;
 use App\Support\Format;
@@ -37,6 +38,20 @@ class RulesSearch
 
     private const VIEWING_WORDS = '/\b(viewings?|inspection)\b/';
 
+    /** A browse for the catalogue: a quantifier plus a property noun, or a set phrase. */
+    private const BROWSE_WORD = '/\b(other|another|more|different|alternative|else|all|everything|every|any|anything|something)\b/';
+    private const BROWSE_NOUN = '/\b(propert\w*|listings?|homes?|houses?|villas?|apartments?|flats?|options?|areas?|sale|rent|stock|inventory)\b/';
+    private const BROWSE_PHRASE = '/\bwhat do you have\b|\bwhat have you got\b|\bwhat is available\b|\bwhats available\b|\banything else\b|\bsomething else\b|\bmore in other\b|\bother areas?\b|\bmore options?\b|\bshow me (?:more|all|other|listings|properties|homes|houses|villas|apartments|flats|options)\b/';
+
+    /** Explicitly "not this one" - the only browses that drop the listing on screen. */
+    private const OTHERS_WORD = '/\b(other|another|different|alternative|else|more)\b/';
+
+    /** A bare yes after an offer to widen - the visitor taking us up on it. */
+    private const AGREEMENT = '/^(?:yes+|yeah|yep|yup|sure|ok|okay|okey|please|pls|go ahead|why not)\b/';
+
+    /** The wording of an offer to look beyond the current area or filters. */
+    private const WIDEN_OFFER = '/\b(other areas?|different areas?|other properties|other options|more options|different features|other features|other listings|widen|broaden|explore other)\b/i';
+
     /**
      * Abbreviations visitors type. A matched alias pins the area even with nothing
      * there: "none in that area" is honest, every listing we have is not.
@@ -47,6 +62,7 @@ class RulesSearch
         'jlt'            => 'Jumeirah Lake Towers',
         'marina'         => 'Dubai Marina',
         'downtown'       => 'Downtown Dubai',
+        'down town'      => 'Downtown Dubai',
         'dh'             => 'Dubai Hills Estate',
         'dubai hills'    => 'Dubai Hills Estate',
         'palm'           => 'Palm Jumeirah',
@@ -109,6 +125,13 @@ class RulesSearch
             return null;
         }
 
+        // "Any other property?" on a listing page is a browse, not a judgement:
+        // search the whole book minus the listing on screen, from the message's
+        // own criteria only - the model would otherwise reuse the page's filters.
+        if (($others = $this->browseOthers($conversation, $text)) !== null) {
+            return $others;
+        }
+
         $criteria = $this->parse($text);
 
         if ($criteria === [] || (count($criteria) === 1 && isset($criteria['type']))) {
@@ -116,6 +139,76 @@ class RulesSearch
         }
 
         return $this->runSearch($conversation, $criteria);
+    }
+
+    /**
+     * A browse for the catalogue, answered from the database. The page's own
+     * area, bedrooms and type are never inherited - only what the visitor typed
+     * is parsed. The listing on screen is dropped only when they ask for
+     * something other than it; "all properties" is the whole book, this one included.
+     *
+     * @return array{text: string, kind: string}|null
+     */
+    private function browseOthers(ChatConversation $conversation, string $text): ?array
+    {
+        $property = $conversation->property;
+
+        if (! $property || ! $property->is_published) {
+            return null;
+        }
+
+        $browse = self::isCatalogueBrowse($text);
+
+        // A bare yes takes up the offer to widen - but never over a judgement.
+        $agreed = ! self::isJudgement($text)
+            && preg_match(self::AGREEMENT, $text)
+            && $this->offeredWiden($conversation);
+
+        if (! $browse && ! $agreed) {
+            return null;
+        }
+
+        $criteria = $this->parse($text);
+
+        // Drop the listing on screen only when the visitor asks for something
+        // other than it. "All properties" is the whole book, this one included;
+        // "any houses under 700k" is a filter the current listing may match.
+        if ($agreed || preg_match(self::OTHERS_WORD, $text)) {
+            $criteria['exclude'] = $property->slug;
+        }
+
+        return $this->runSearch($conversation, $criteria);
+    }
+
+    /**
+     * A browse for the whole catalogue rather than a question about the listing
+     * on screen: a quantifier plus a property noun, or a set phrase. Shared with
+     * QuickAnswers so "what do you have for sale" reaches the search instead of
+     * being answered as a fact about the current page.
+     */
+    public static function isCatalogueBrowse(string $text): bool
+    {
+        if (self::isJudgement($text)) {
+            return false;
+        }
+
+        return (bool) ((preg_match(self::BROWSE_WORD, $text) && preg_match(self::BROWSE_NOUN, $text))
+            || preg_match(self::BROWSE_PHRASE, $text));
+    }
+
+    /** Judgement, or "all about this" - the listing itself, never a browse. */
+    private static function isJudgement(string $text): bool
+    {
+        return (bool) preg_match('/\b(similar|cheaper|like this|like it|better|best|recommend|suggest)\b/', $text)
+            || (bool) preg_match('/\babout\s+(it|this|these|the)\b/', $text);
+    }
+
+    /** Did the last reply offer to look beyond the current area or filters? */
+    private function offeredWiden(ChatConversation $conversation): bool
+    {
+        $last = $conversation->messages->where('role', ChatMessage::ASSISTANT)->last();
+
+        return $last !== null && (bool) preg_match(self::WIDEN_OFFER, $last->content);
     }
 
     /**

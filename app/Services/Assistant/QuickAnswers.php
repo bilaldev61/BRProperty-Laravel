@@ -254,6 +254,13 @@ class QuickAnswers
             }
         }
 
+        // A catalogue browse ("what do you have for sale", "show me more") is a
+        // search, not a fact about the listing on screen. Hand it to the search
+        // layer, which excludes the page and reads only what the visitor typed.
+        if (RulesSearch::isCatalogueBrowse($text)) {
+            return null;
+        }
+
         $property = $this->listingInFocus($conversation);
 
         // Compound messages are answered together only when every part stands alone.

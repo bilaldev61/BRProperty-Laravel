@@ -323,4 +323,121 @@ class AssistantRuleHygieneTest extends TestCase
 
         $this->assertSame('rule:listing_price', $this->lastAnsweredBy());
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Browsing beyond the listing on screen
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_other_properties_searches_the_whole_book_not_the_page(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $other = $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        $reply = $this->ask('any other property for sale', $page);
+
+        $this->assertSame('rule:search', $this->lastAnsweredBy());
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString($other->title, $reply);
+        $this->assertStringNotContainsString($page->title, $reply);
+    }
+
+    public function test_more_in_other_areas_does_not_inherit_the_page_bedrooms(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $other = $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        // Misspelled "areeas" must still browse, and the 2-bed must survive the
+        // page's 5-bed filter being dropped.
+        $reply = $this->ask('more in other areeas', $page);
+
+        $this->assertSame('rule:search', $this->lastAnsweredBy());
+        $this->assertStringContainsString($other->title, $reply);
+        $this->assertStringNotContainsString($page->title, $reply);
+    }
+
+    public function test_yes_after_an_offer_to_widen_runs_the_broad_search(): void
+    {
+        $page = $this->property(['title' => 'Creek Harbour 2-bed', 'suburb' => 'Dubai Creek Harbour', 'type' => 'apartment', 'bedrooms' => 2]);
+        $other = $this->property(['title' => 'Marina 3-bed', 'suburb' => 'Dubai Marina', 'type' => 'apartment', 'bedrooms' => 3]);
+
+        $this->ask('What is the price?', $page);
+
+        // Stand in for the model having offered to widen on the previous turn.
+        ChatMessage::where('role', 'assistant')->latest('id')->first()
+            ->update(['content' => 'Would you like to explore other properties in different areas?']);
+
+        $reply = $this->ask('yes', $page);
+
+        $this->assertSame('rule:search', $this->lastAnsweredBy());
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString($other->title, $reply);
+        $this->assertStringNotContainsString($page->title, $reply);
+    }
+
+    public function test_a_named_new_area_is_searched_without_the_page_filters(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $downtown = $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        // "down town" spaced and misspelled: the alias pins the area, and the
+        // page's 5-bed / house filters must not ride along into the search.
+        $reply = $this->ask('dubai down town', $page);
+
+        $this->assertSame('rule:search', $this->lastAnsweredBy());
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString($downtown->title, $reply);
+        $this->assertStringNotContainsString($page->title, $reply);
+    }
+
+    public function test_a_similar_property_ask_still_belongs_to_the_model(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        // "similar" is a judgement, not a browse - it must not become a listings dump.
+        $reply = $this->ask('any other similar villa', $page);
+
+        $this->assertSame('MODEL REPLY', $reply);
+        $this->assertSame('ai', $this->lastAnsweredBy());
+    }
+
+    public function test_all_properties_for_sale_browses_the_whole_book(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $other = $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        // "All" is the whole book, not the page's narrow filters: the Downtown
+        // 2-bed must appear even though the page is a 5-bed Palm villa. "All"
+        // includes the listing on screen too - the bug was returning only it.
+        $reply = $this->ask('then tell all properties you currently have for sale', $page);
+
+        $this->assertSame('rule:search', $this->lastAnsweredBy());
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString($other->title, $reply);
+    }
+
+    public function test_what_do_you_have_browses_without_a_quantifier(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $other = $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        $reply = $this->ask('what do you have for sale', $page);
+
+        $this->assertSame('rule:search', $this->lastAnsweredBy());
+        $this->assertStringContainsString($other->title, $reply);
+    }
+
+    public function test_all_about_this_listing_stays_a_page_question(): void
+    {
+        $page = $this->property(['title' => 'Signature Palm villa', 'suburb' => 'Palm Jumeirah', 'bedrooms' => 5]);
+        $this->property(['title' => 'Downtown 2-bed', 'suburb' => 'Downtown Dubai', 'type' => 'apartment', 'bedrooms' => 2]);
+
+        // "all about this" describes the listing on screen, not a browse.
+        $reply = $this->ask('tell me all about this property', $page);
+
+        $this->assertSame('MODEL REPLY', $reply);
+        $this->assertSame('ai', $this->lastAnsweredBy());
+    }
 }

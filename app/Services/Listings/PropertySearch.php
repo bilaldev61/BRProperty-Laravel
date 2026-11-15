@@ -27,6 +27,7 @@ class PropertySearch
             'keywords'     => ['nullable', 'string', 'max:80'],
             'sold'         => ['nullable', 'boolean'],
             'rent'         => ['nullable', 'boolean'],
+            'exclude'      => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -47,6 +48,8 @@ class PropertySearch
             // People say "DHA"; the listing says "DHA Phase 6". The site's own
             // filter matches areas exactly because it offers a dropdown.
             ->when($criteria['area'] ?? null, fn($q, $v) => $q->where('suburb', 'like', '%' . self::stripWildcards($v) . '%'))
+            // "Show me others" must not hand back the listing already on screen.
+            ->when($criteria['exclude'] ?? null, fn($q, $v) => $q->where('slug', '!=', $v))
             ->filter([
                 'type' => $criteria['type'] ?? null,
                 'beds' => $criteria['min_bedrooms'] ?? null,
