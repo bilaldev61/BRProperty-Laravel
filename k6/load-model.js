@@ -22,6 +22,9 @@ const latency = new Trend('model_latency_ms', true);
 const repliesOk = new Counter('model_replies_ok');
 const proseReplies = new Counter('model_prose_replies');
 const toolReplies = new Counter('model_tool_replies');
+const promptTokens = new Counter('model_prompt_tokens');
+const genTokens = new Counter('model_completion_tokens');
+const totalTokens = new Counter('model_total_tokens');
 
 export const options = {
   scenarios: {
@@ -58,13 +61,14 @@ function bodyFor(question) {
 
 function answerText(message) {
   if (!message) return '(no message)';
-  if (message.content && message.content.trim() !== '') return message.content.trim();
+  const parts = [];
+  if (message.content && message.content.trim() !== '') parts.push(message.content.trim());
   if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    return '[tool_call] ' + message.tool_calls
+    parts.push('[tool_call] ' + message.tool_calls
       .map((t) => `${t.function.name}(${t.function.arguments})`)
-      .join(', ');
+      .join(', '));
   }
-  return '(empty reply)';
+  return parts.length ? parts.join('\n') : '(empty reply)';
 }
 
 export default function () {
@@ -79,12 +83,18 @@ export default function () {
 
   let message = null;
   let tokens = '';
+  let gen = '';
   let finish = '';
   try {
     message = res.json('choices.0.message');
     finish = res.json('choices.0.finish_reason') || '';
     const usage = res.json('usage');
-    if (usage && usage.total_tokens) tokens = String(usage.total_tokens);
+    if (usage && usage.total_tokens) {
+      tokens = String(usage.total_tokens);
+      totalTokens.add(usage.total_tokens);
+      if (usage.prompt_tokens) promptTokens.add(usage.prompt_tokens);
+      if (usage.completion_tokens) { gen = String(usage.completion_tokens); genTokens.add(usage.completion_tokens); }
+    }
   } catch (e) { /* non-JSON or error body: leave placeholders */ }
 
   const ok = check(res, {
@@ -100,7 +110,7 @@ export default function () {
 
   // One atomic log call so concurrent VUs never interleave a block.
   console.log(
-    `=== vu ${__VU} iter ${__ITER} | ${Math.round(res.timings.duration)}ms | tokens ${tokens || '?'} | ${finish || res.status} ===\n` +
+    `=== vu ${__VU} iter ${__ITER} | ${Math.round(res.timings.duration)}ms | tokens ${tokens || '?'} | gen ${gen || '?'} | ${finish || res.status} ===\n` +
     `Q: ${question}\n` +
     `A: ${answerText(message)}\n`
   );
@@ -129,6 +139,11 @@ export function handleSummary(data) {
       p99: val('model_latency_ms', 'p(99)'),
       max: val('model_latency_ms', 'max'),
     },
+    tokens: {
+      prompt: val('model_prompt_tokens', 'count'),
+      generated: val('model_completion_tokens', 'count'),
+      total: val('model_total_tokens', 'count'),
+    },
   };
 
   const lines = [
@@ -140,6 +155,7 @@ export function handleSummary(data) {
     `replies ok        : ${summary.replies_ok} (prose ${summary.prose_replies}, tool ${summary.tool_replies})`,
     `max concurrent    : ${summary.max_vus}`,
     `latency ms        : avg ${Math.round(summary.model_latency_ms.avg || 0)} | med ${Math.round(summary.model_latency_ms.med || 0)} | p95 ${Math.round(summary.model_latency_ms.p95 || 0)} | p99 ${Math.round(summary.model_latency_ms.p99 || 0)} | max ${Math.round(summary.model_latency_ms.max || 0)}`,
+    `tokens            : prompt ${summary.tokens.prompt} | generated ${summary.tokens.generated} | total ${summary.tokens.total}`,
     'transcript        : k6/replies.log',
     '=================================================',
     '',

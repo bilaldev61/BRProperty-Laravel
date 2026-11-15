@@ -144,7 +144,7 @@ if ($cut !== false) {
 
 // One block per answer: header, "Q: ...", then multi-line "A: ..." up to the next header.
 preg_match_all(
-    '/^=== vu (\d+) iter (\d+) \| (\d+)ms \| tokens (\S+) \| (\S+) ===\nQ: (.*?)\nA: (.*?)(?=\n=== vu |\z)/ms',
+    '/^=== vu (\d+) iter (\d+) \| (\d+)ms \| tokens (\S+) \| gen (\S+) \| (\S+) ===\nQ: (.*?)\nA: (.*?)(?=\n=== vu |\z)/ms',
     $log,
     $blocks,
     PREG_SET_ORDER
@@ -156,30 +156,43 @@ $prose = 0;
 $tool = 0;
 $tokenSum = 0;
 $tokenN = 0;
+$genSum = 0;
+$genN = 0;
+$msSum = 0;
 foreach ($blocks as $b) {
-    $answer = rtrim($b[7]);
-    $isTool = $b[5] === 'tool_calls';
+    $answer = rtrim($b[8]);
+    $isTool = $b[6] === 'tool_calls';
     $isTool ? $tool++ : $prose++;
+    $msSum += (int) $b[3];
     if (is_numeric($b[4])) {
         $tokenSum += (int) $b[4];
         $tokenN++;
     }
-    if (preg_match('/\[tool_call\]\s*(\w+)\(/', $answer, $tm)) {
-        $toolNames[$tm[1]] = ($toolNames[$tm[1]] ?? 0) + 1;
+    if (is_numeric($b[5])) {
+        $genSum += (int) $b[5];
+        $genN++;
+    }
+    if (preg_match_all('/\[tool_call\]\s*(\w+)\(/', $answer, $tm)) {
+        foreach ($tm[1] as $name) {
+            $toolNames[$name] = ($toolNames[$name] ?? 0) + 1;
+        }
     }
     $entries[] = [
         'vu' => (int) $b[1],
         'iter' => (int) $b[2],
         'ms' => (int) $b[3],
         'tokens' => $b[4],
-        'finish' => $b[5],
-        'q' => trim($b[6]),
+        'gen' => $b[5],
+        'finish' => $b[6],
+        'q' => trim($b[7]),
         'a' => $answer,
         'type' => $isTool ? 'tool' : 'prose',
     ];
 }
 $total = count($entries);
 $avgTokens = $tokenN ? round($tokenSum / $tokenN) : 0;
+$avgGen = $genN ? round($genSum / $genN) : 0;
+$genThroughput = $msSum > 0 ? $genSum / ($msSum / 1000) : 0;
 arsort($toolNames);
 
 $end = (int) strtotime($summary['finished_at'] ?? 'now') + 5;
@@ -196,6 +209,7 @@ $charts .= svgChart('vLLM Running vs Waiting (queue)', [
 ], 'short', $start, $end);
 $charts .= svgChart('vLLM KV Cache Usage', [series('vllm:kv_cache_usage_perc', 'KV cache', $start, $end, $step)], 'percentunit', $start, $end, 1.0);
 $charts .= svgChart('vLLM Completed Requests /s', [series('sum(rate(vllm:request_success_total[1m]))', 'completed/s', $start, $end, $step)], 'reqps', $start, $end);
+$charts .= svgChart('vLLM Generation Tokens/s', [series('sum(rate(vllm:generation_tokens_total[1m]))', 'generated/s', $start, $end, $step)], 'reqps', $start, $end);
 
 $lat = $summary['model_latency_ms'] ?? [];
 $card = fn(string $label, string $value, string $sub = '') =>
@@ -212,6 +226,9 @@ $cards .= $card('p95 latency', fmtMs((float) ($lat['p95'] ?? 0)), '95% faster th
 $cards .= $card('p99 latency', fmtMs((float) ($lat['p99'] ?? 0)), '99% faster than this');
 $cards .= $card('Max latency', fmtMs((float) ($lat['max'] ?? 0)), 'the single slowest request');
 $cards .= $card('Avg tokens / turn', (string) $avgTokens, 'prompt + tools + reply');
+$cards .= $card('Tokens generated', number_format($genSum), 'output tokens, all turns');
+$cards .= $card('Avg output / turn', (string) $avgGen, 'generated tokens per reply');
+$cards .= $card('Output throughput', number_format($genThroughput, 1) . ' tok/s', 'generated tokens per request-second');
 
 $toolList = '';
 foreach ($toolNames as $name => $n) {
@@ -227,6 +244,7 @@ foreach ($entries as $e) {
         . '<div class="qh"><span class="meta">vu ' . $e['vu'] . ' &middot; iter ' . $e['iter'] . '</span>'
         . '<span class="badge b-lat">' . fmtMs($e['ms']) . '</span>'
         . '<span class="badge b-tok">' . esc($e['tokens']) . ' tok</span>'
+        . '<span class="badge b-tok">' . esc($e['gen']) . ' out</span>'
         . '<span class="badge ' . $finClass . '">' . esc($e['finish']) . '</span></div>'
         . '<div class="q"><span class="tag">Q</span>' . esc($e['q']) . '</div>'
         . '<div class="a"><span class="tag">A</span><span class="atext">' . esc($e['a']) . '</span></div>'
@@ -302,6 +320,8 @@ $notes = <<<'HTML'
   <li><b>Why latency climbs.</b> One GPU keeps roughly 4&ndash;8 generations running at once (the KV-cache ceiling). Past that, requests <i>queue</i>: median (p50) is the typical wait, p95/p99 are the slow tail (95%/99% of requests were faster), and max is the single worst request &mdash; not the same as p99. Nothing fails &mdash; it just waits.</li>
   <li><b>~2,000 tokens per turn.</b> Every model turn re-sends the system prompt (~1,630 tok) + the tool definitions (~810) + the question + the answer. Rule-answered questions cost 0 tokens; these model-only questions are the paid path.</li>
   <li><b>Finish reason.</b> <code>stop</code> = the model wrote a prose answer. <code>tool_calls</code> = it asked to run a tool (<code>search_properties</code> / <code>get_property</code> / <code>save_lead</code>) before answering &mdash; exactly what the comparison/recommendation questions are meant to trigger.</li>
+  <li><b>Tool rows show a request, not an answer.</b> The harness sends one request per question and never runs the tool, so a <code>tool_calls</code> row shows the tool the model asked for plus its arguments. The final prose answer needs a second round (run the tool, send the result back) &mdash; that round is the Laravel app's job, not this GPU-only test.</li>
+  <li><b>Generated vs prompt tokens.</b> &ldquo;Tokens generated&rdquo; counts only the model's output (completion tokens); the ~2,000-token prompt is input re-sent each turn. Output is what the GPU decodes token-by-token, so it drives the generation speed.</li>
   <li><b>failed_rate 0%.</b> No HTTP errors: every request returned a valid model response, even at 100 concurrent users.</li>
   <li><b>p99 in summary.json.</b> The first run omitted p99 (k6's default summary stats leave it out); the script now sets <code>summaryTrendStats</code> so it appears.</li>
 </ul>
@@ -312,7 +332,9 @@ $why = <<<'HTML'
 lead capture &rarr; message cap &rarr; repeat guard &rarr; QuickAnswers &rarr; search rules &rarr; off-topic gate &rarr; <b>model</b>.
 Greetings, price/size facts, plain searches (&ldquo;2 bed in Marina under 2M&rdquo;), process (&ldquo;how does buying work?&rdquo;),
 deferrals (&ldquo;is the price negotiable?&rdquo;), leads and off-topic are all handled by rules for free. Only judgement, opinion,
-creative and comparison/recommendation questions reach the model &mdash; so that is what this pool contains.</p>
+creative and comparison/recommendation questions reach the model &mdash; so that is what this pool contains. A few questions
+deliberately offer a name and phone number (to trigger <code>save_lead</code>) or name a listing slug (to trigger
+<code>get_property</code>), so the run exercises all three tools, not just <code>search_properties</code>.</p>
 HTML;
 
 $finished = esc($summary['finished_at'] ?? '');
