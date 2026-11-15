@@ -207,9 +207,10 @@ $cards .= $card('Requests', (string) ($summary['requests'] ?? $total));
 $cards .= $card('Failures', (string) round((float) ($summary['failed_rate'] ?? 0) * 100) . '%', 'HTTP errors');
 $cards .= $card('Max concurrent users', (string) ($summary['max_vus'] ?? '?'));
 $cards .= $card('Answers recorded', (string) $total, $prose . ' prose / ' . $tool . ' tool');
-$cards .= $card('Median latency', fmtMs((float) ($lat['med'] ?? 0)), 'typical wait');
+$cards .= $card('Median latency (p50)', fmtMs((float) ($lat['med'] ?? 0)), '50% faster than this');
 $cards .= $card('p95 latency', fmtMs((float) ($lat['p95'] ?? 0)), '95% faster than this');
-$cards .= $card('Max latency', fmtMs((float) ($lat['max'] ?? 0)), 'worst queued request');
+$cards .= $card('p99 latency', fmtMs((float) ($lat['p99'] ?? 0)), '99% faster than this');
+$cards .= $card('Max latency', fmtMs((float) ($lat['max'] ?? 0)), 'the single slowest request');
 $cards .= $card('Avg tokens / turn', (string) $avgTokens, 'prompt + tools + reply');
 
 $toolList = '';
@@ -239,7 +240,7 @@ $css = <<<'CSS'
 h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:38px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}
 .sub{color:var(--mut);margin:0 0 20px}
 a{color:var(--accent)}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
 .cv{font-size:24px;font-weight:650}.cl{color:var(--mut);font-size:13px;margin-top:2px}.cs{color:var(--mut);font-size:12px;margin-top:4px}
 .notes{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 20px}
@@ -298,7 +299,7 @@ JS;
 $notes = <<<'HTML'
 <ul>
   <li><b>prose + tool can exceed the request count.</b> A single model response can contain <i>both</i> text and a tool call, so the two counts overlap &mdash; they are not a clean split of the total. The transcript filters by finish reason instead.</li>
-  <li><b>Why latency climbs.</b> One GPU keeps roughly 4&ndash;8 generations running at once (the KV-cache ceiling). Past that, requests <i>queue</i>: median is the typical wait, p95 is the slow tail, max is the worst queued request at 100 users. Nothing fails &mdash; it just waits.</li>
+  <li><b>Why latency climbs.</b> One GPU keeps roughly 4&ndash;8 generations running at once (the KV-cache ceiling). Past that, requests <i>queue</i>: median (p50) is the typical wait, p95/p99 are the slow tail (95%/99% of requests were faster), and max is the single worst request &mdash; not the same as p99. Nothing fails &mdash; it just waits.</li>
   <li><b>~2,000 tokens per turn.</b> Every model turn re-sends the system prompt (~1,630 tok) + the tool definitions (~810) + the question + the answer. Rule-answered questions cost 0 tokens; these model-only questions are the paid path.</li>
   <li><b>Finish reason.</b> <code>stop</code> = the model wrote a prose answer. <code>tool_calls</code> = it asked to run a tool (<code>search_properties</code> / <code>get_property</code> / <code>save_lead</code>) before answering &mdash; exactly what the comparison/recommendation questions are meant to trigger.</li>
   <li><b>failed_rate 0%.</b> No HTTP errors: every request returned a valid model response, even at 100 concurrent users.</li>

@@ -54,7 +54,7 @@
       "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
       "targets": [
         { "refId": "A", "expr": "k6_http_req_duration_p99", "legendFormat": "p99" },
-        { "refId": "B", "expr": "k6_reply_latency_ms_p99", "legendFormat": "reply p99" }
+        { "refId": "B", "expr": "k6_model_latency_ms_p99", "legendFormat": "model p99" }
       ]
     },
     {

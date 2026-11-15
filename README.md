@@ -349,8 +349,7 @@ Laravel, no rate limiter) so the numbers reflect the GPU alone. It ramps
 | `export-payload.php` | Boots Laravel offline and captures the real request body (system prompt + tool menu) to `payload.json`. Re-run when the prompt or tools change. |
 | `payload.json` | The captured body, replayed as the template for every request. |
 | `model-questions.json` | 50 questions only the model answers (judgement / opinion / comparison / recommendation) — the rule layer answers everything else for free. |
-| `load-model.js` | The main ramp: a random question per request, logs each Q&A, writes `summary.json`. |
-| `load.js` | Simpler variant that replays one fixed payload. |
+| `load-model.js` | The ramp: a random question per request, logs each Q&A, writes `summary.json`. |
 | `build-report.php` | Builds `public/load-test-report.html` from the last run. |
 | `docker-compose.yml`, `prometheus.yml`, `grafana/` | An isolated Prometheus (host `:9091`) + Grafana (`:3001`) stack that scrapes vLLM and receives k6's metrics. |
 
