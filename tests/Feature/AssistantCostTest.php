@@ -317,4 +317,70 @@ class AssistantCostTest extends TestCase
         $this->assertFalse($log->defers('It is a four-bedroom villa with a private pool.'));
         $this->assertFalse($log->defers('Our team can show you the unit on Saturday.'));
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Grounding the model's listing links
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_an_invented_listing_link_is_stripped_from_a_model_reply(): void
+    {
+        // Observed live: the model copied the rules layer's list format and
+        // invented two of the three listings, URLs included. The real one
+        // stays; the invented title, price and link must not reach the visitor.
+        $real = $this->property();
+        $reply = "I found 2 listings - here are the latest:\n\n"
+            . '- ' . $real->title . " (AED 625,000, 4 bed, Al Barsha)\n" . route('properties.show', $real) . "\n"
+            . "- Canal view 3-bed with private terrace (AED 2,500,000, 3 bed, Dubai Marina)\n"
+            . 'http://localhost:8000/properties/canal-view-3-bed-with-private-terrace';
+        $this->fake(new FakeAiConnector($reply));
+
+        $response = $this->ask('Tell me what I should check before buying')->assertOk();
+
+        $this->assertStringContainsString(route('properties.show', $real), $response->json('reply'));
+        $this->assertStringNotContainsString('canal-view-3-bed', $response->json('reply'));
+        $this->assertStringNotContainsString('Canal view 3-bed', $response->json('reply'));
+    }
+
+    public function test_a_reply_of_only_invented_listings_is_answered_by_the_rules(): void
+    {
+        $this->property();
+        $reply = "I found 1 listings - here are the latest:\n\n"
+            . "- Canal-side 2-bed with gym and pool (AED 1,750,000, 2 bed, Dubai Marina)\n"
+            . 'http://localhost:8000/properties/canal-side-2-bed-with-gym-and-pool';
+        $this->fake(new FakeAiConnector($reply));
+
+        $response = $this->ask('Tell me what I should check before buying')->assertOk();
+
+        // Not even the "I found 1 listings" header may survive: the whole
+        // answer was invented, so the records answer in its place.
+        $this->assertStringNotContainsString('canal-side-2-bed', $response->json('reply'));
+        $this->assertStringNotContainsString('I found 1 listings', $response->json('reply'));
+        $this->assertStringStartsWith('rule:', ChatMessage::where('role', ChatMessage::ASSISTANT)->value('answered_by'));
+    }
+
+    public function test_a_model_reply_citing_real_listings_passes_through_untouched(): void
+    {
+        $real = $this->property();
+        $reply = 'Try this one: ' . route('properties.show', $real);
+        $this->fake(new FakeAiConnector($reply));
+
+        $response = $this->ask('Tell me what I should check before buying')->assertOk();
+
+        $this->assertSame($reply, $response->json('reply'));
+        $this->assertSame('ai', ChatMessage::where('role', ChatMessage::ASSISTANT)->value('answered_by'));
+    }
+
+    public function test_the_never_invent_rule_sits_in_the_cacheable_prefix(): void
+    {
+        $fake = $this->fake();
+
+        $this->ask('Tell me about buying in Dubai')->assertOk();
+
+        $prompt = (string) $fake->system;
+        $marker = (int) strpos($prompt, 'CURRENT DATA');
+
+        $this->assertStringContainsString('Never invent a listing or a URL', substr($prompt, 0, $marker));
+    }
 }

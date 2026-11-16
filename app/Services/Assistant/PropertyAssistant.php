@@ -108,6 +108,19 @@ class PropertyAssistant
         [$answeredBy, $tokens] = [ChatMessage::BY_AI, $this->ai->lastTokens()];
         $usage = $this->ai->lastRequests();
 
+        // A small model can copy the rules layer's list format and invent the
+        // listings inside it, URLs included. Every listing link is checked
+        // against the records; a reply built only on invented ones is replaced
+        // by the rules answer rather than served.
+        $grounded = $this->groundListingLinks($reply);
+
+        if ($grounded === null) {
+          $rules = $this->rules->answer($conversation, $message);
+          [$reply, $answeredBy] = [$rules['text'], ChatMessage::BY_RULE_PREFIX . $rules['kind']];
+        } else {
+          $reply = $grounded;
+        }
+
         // A deferral is read from the reply, not left to the model to report:
         // the question is filed and the visitor given a way back either way.
         if ($this->deferrals->defers($reply)) {
@@ -163,6 +176,45 @@ class PropertyAssistant
   private function asksForDetails(string $reply): bool
   {
     return (bool) preg_match('/\b(?:e-?mails?|contact you|call you|your (?:name|number|details))\b/i', $reply);
+  }
+
+  /**
+   * Drop every line citing a listing the records do not have, along with the
+   * list-item line above it - an invented title and price must not survive
+   * just because its link was removed. Returns null when the reply cited
+   * listings but none of them are real: the whole answer is invented, header
+   * and all, and the rules must answer instead.
+   */
+  private function groundListingLinks(string $reply): ?string
+  {
+    $lines = explode("\n", $reply);
+    $kept = [];
+    $sawLink = false;
+    $keptLink = false;
+
+    foreach ($lines as $line) {
+      if (preg_match('#/properties/([^\s/?\#]+)#', $line, $m)) {
+        $sawLink = true;
+
+        if (Property::published()->where('slug', $m[1])->exists()) {
+          $keptLink = true;
+        } else {
+          if ($kept !== [] && preg_match('/^\s*(?:[-*]|\d+[.)])\s/', end($kept))) {
+            array_pop($kept);
+          }
+
+          continue;
+        }
+      }
+
+      $kept[] = $line;
+    }
+
+    if ($sawLink && ! $keptLink) {
+      return null;
+    }
+
+    return trim(implode("\n", $kept));
   }
 
   /** Long chats go to a person: they are serious, and they are not free. */
@@ -317,6 +369,8 @@ class PropertyAssistant
         - Property types (search key and name): {$types}.
         - When you mention a listing, put its url from the tool result on its own line, as a bare
           address (https://...) - never as [text](url).
+        - Never invent a listing or a URL. Every property you mention must come from a tool result
+          in this turn; if you have not searched, say so and search instead of writing a list.
 
         HANDING OVER TO THE TEAM
         - When a visitor shows real interest - wants to visit, make an offer, get a call, or asks something
