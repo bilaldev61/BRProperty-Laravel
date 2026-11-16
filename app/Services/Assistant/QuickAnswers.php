@@ -154,6 +154,17 @@ class QuickAnswers
     private const OFF_TOPIC_INTENT = '/\b(?:write|compose|create|make|generate|tell|give|sing)\b.{0,40}\b(?:story|poem|essay|joke|song|novel|fiction|tale|rhyme|script|limerick)\b|\b(?:who|whos|what|whats|when|where)\b.{0,40}\b(?:ruler|president|prime minister|king|queen|capital|population|weather|news|visa|flight|currency|language|religion)\b|\b(?:ruler|president|prime minister|king|queen)\s+of\b/i';
 
     /**
+     * Creative writing the narrow intent above misses: a length request ("100
+     * words for dubai"), a write verb with a count ("write 100 words"), or a bare
+     * creative noun with a topic ("essay about dubai"). A word-count digit is a
+     * length, not a budget, so this is not digit-guarded; the scope allowlist
+     * still guards it. "describe" and "tell me about" are deliberately absent -
+     * they overlap with legitimate listing and area asks ("describe it", "tell me
+     * about this area"), so those stay with the model.
+     */
+    private const CREATIVE_WRITING = '/\b\d+\s*(?:words?|lines?|paragraphs?|sentences?|pages?)\s*(?:about|for|on|of|describing|explaining|summarizing|summarising)\b|\b(?:write|compose|generate|give|tell|sing|draft)\b.{0,25}\b\d+\s*(?:words?|lines?|paragraphs?|sentences?|pages?)\b|\b(?:essay|poem|story|joke|song|novel|fiction|tale|rhyme|script|limerick)\s*(?:about|for|on|of)\b/i';
+
+    /**
      * Is this business real and licensed? A registration is a legal claim made
      * in the agency's name, so it is answered from config and never inferred.
      */
@@ -209,6 +220,18 @@ class QuickAnswers
             && ! preg_match(self::IN_SCOPE, $text)
             && ! preg_match(self::IN_SCOPE_INTENT, $text)
             && ! preg_match('/\d/', $text)
+        ) {
+            return true;
+        }
+
+        // A length request or a bare creative noun is creative writing even with
+        // a number ("100 words") or only a few words, so neither the digit guard
+        // above nor the continuation exemption below applies. The scope allowlist
+        // still stands: a property word means it is about the listing, not an essay.
+        if (
+            preg_match(self::CREATIVE_WRITING, $text)
+            && ! preg_match(self::IN_SCOPE, $text)
+            && ! preg_match(self::IN_SCOPE_INTENT, $text)
         ) {
             return true;
         }

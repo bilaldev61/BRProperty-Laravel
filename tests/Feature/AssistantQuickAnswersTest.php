@@ -377,6 +377,45 @@ class AssistantQuickAnswersTest extends TestCase
         $this->assertNotSame('rule:off_topic', $this->lastReply()->answered_by);
     }
 
+    /** @return array<string, array{0: string}> */
+    public static function creativeLengthRequests(): array
+    {
+        return [
+            'the live leak'        => ['100 words for dubai'],
+            'write verb and count' => ['write 100 words about dubai'],
+            'give me a count'      => ['give me 100 words on dubai'],
+            'count first'          => ['100 words about dubai'],
+            'lines not words'      => ['50 lines on dubai'],
+            'bare creative noun'   => ['essay about dubai'],
+            'poem for a city'      => ['poem for dubai'],
+        ];
+    }
+
+    #[DataProvider('creativeLengthRequests')]
+    public function test_creative_length_requests_are_declined_on_any_page(string $message): void
+    {
+        // A word-count is a length, not a budget, and a creative ask is off-topic
+        // even on a listing page and even when it is only a few words long. The
+        // old gate let every one of these through to the model, which wrote it.
+        foreach ([null, $this->property()] as $property) {
+            $reply = $this->ask($message, $property);
+
+            $this->assertStringContainsString('only help with property', $reply);
+            $this->assertSame('rule:off_topic', $this->lastReply()->answered_by);
+        }
+
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    public function test_a_creative_length_request_that_names_the_property_is_not_gated(): void
+    {
+        // The allowlist still guards the new pattern: "100 words about this villa"
+        // carries a property word, so it is about the listing, not an essay.
+        $this->ask('100 words about this villa', $this->property());
+
+        $this->assertNotSame('rule:off_topic', $this->lastReply()->answered_by);
+    }
+
     public function test_distress_reaches_the_model_and_stands_the_gate_down_for_the_thread(): void
     {
         $this->ask('i am kidnapeed');
