@@ -26,6 +26,18 @@
                 value="{{ old('daily_limit', $chat['daily_limit']) }}" required>
         </x-field>
 
+        <x-field label="Messages per minute (per visitor)" name="ip_per_minute" required
+            hint="Burst limit for one visitor, keyed by IP. Stops a single person flooding the chat. Raise it for a heavy day of testing; the site-wide daily cap still applies.">
+            <input id="ip_per_minute" name="ip_per_minute" type="number" min="1" max="120" step="1" class="input"
+                value="{{ old('ip_per_minute', $chat['ip_per_minute']) }}" required>
+        </x-field>
+
+        <x-field label="Messages per day (per visitor)" name="ip_per_day" required
+            hint="Daily limit for one visitor, keyed by IP. Past it they get your phone number until midnight. This is the limit a long testing session hits first - raise it when you need to.">
+            <input id="ip_per_day" name="ip_per_day" type="number" min="1" max="100000" step="10" class="input"
+                value="{{ old('ip_per_day', $chat['ip_per_day']) }}" required>
+        </x-field>
+
         <x-field label="Thinking effort" name="effort" required
             hint="How hard the model thinks before replying. None is fastest and cheapest on models that show their thinking; raise it only if answers feel shallow.">
             <select id="effort" name="effort" class="input">
@@ -88,6 +100,14 @@
                 <dd class="font-semibold text-ink-900">{{ number_format($chat['daily_limit']) }} messages</dd>
             </div>
             <div class="flex justify-between gap-4 border-b border-ink-100 pb-1.5">
+                <dt class="text-ink-500">Per visitor / minute</dt>
+                <dd class="font-semibold text-ink-900">{{ $chat['ip_per_minute'] }} messages</dd>
+            </div>
+            <div class="flex justify-between gap-4 border-b border-ink-100 pb-1.5">
+                <dt class="text-ink-500">Per visitor / day</dt>
+                <dd class="font-semibold text-ink-900">{{ number_format($chat['ip_per_day']) }} messages</dd>
+            </div>
+            <div class="flex justify-between gap-4 border-b border-ink-100 pb-1.5">
                 <dt class="text-ink-500">Rules answer first</dt>
                 <dd class="font-semibold text-ink-900">{{ $chat['quick_answers'] ? 'yes' : 'no' }}</dd>
             </div>
@@ -107,6 +127,6 @@
         <strong class="font-semibold">The provider, model name and API key are not editable here.</strong>
         A typo in any of them takes the chat offline instead of making it cheaper, so they stay in
         <code class="font-mono text-xs">config/ai.php</code> and <code class="font-mono text-xs">.env</code>.
-        Every per-visitor limit (8 messages a minute) lives in code next to them.
+        The per-visitor limits above are editable; the site-wide daily cap stays the backstop on the total bill.
     </div>
 </form>

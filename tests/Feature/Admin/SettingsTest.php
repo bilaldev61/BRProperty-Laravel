@@ -198,6 +198,8 @@ class SettingsTest extends TestCase
             'max_messages'    => 20,
             'retention_days'  => 30,
             'daily_limit'     => 200,
+            'ip_per_minute'   => 20,
+            'ip_per_day'      => 500,
             'effort'          => 'none',
             'max_tool_rounds' => 2,
             'model_enabled'   => '1',
@@ -207,6 +209,8 @@ class SettingsTest extends TestCase
         $this->assertSame(20, config('ai.chat.max_messages'));
         $this->assertSame(30, config('ai.chat.retention_days'));
         $this->assertSame(200, config('ai.chat.daily_limit'));
+        $this->assertSame(20, config('ai.chat.ip_per_minute'));
+        $this->assertSame(500, config('ai.chat.ip_per_day'));
         $this->assertSame('none', config('ai.chat.effort'));
         $this->assertSame(2, config('ai.chat.max_tool_rounds'));
         $this->assertTrue(config('ai.chat.model_enabled'));
@@ -227,6 +231,8 @@ class SettingsTest extends TestCase
             'max_messages'    => 30,
             'retention_days'  => 90,
             'daily_limit'     => 1500,
+            'ip_per_minute'   => 8,
+            'ip_per_day'      => 150,
             'effort'          => 'low',
             'max_tool_rounds' => 4,
             'quick_answers'   => '1',
@@ -243,9 +249,11 @@ class SettingsTest extends TestCase
             'max_messages'    => 500,
             'retention_days'  => 1,
             'daily_limit'     => 10,
+            'ip_per_minute'   => 0,
+            'ip_per_day'      => 100001,
             'effort'          => 'wild',
             'max_tool_rounds' => 9,
-        ])->assertSessionHasErrors(['history', 'max_messages', 'retention_days', 'daily_limit', 'effort', 'max_tool_rounds']);
+        ])->assertSessionHasErrors(['history', 'max_messages', 'retention_days', 'daily_limit', 'ip_per_minute', 'ip_per_day', 'effort', 'max_tool_rounds']);
 
         $this->assertSame(0, Setting::count());
     }
@@ -255,12 +263,15 @@ class SettingsTest extends TestCase
         $original = config('ai.chat.history');
         $originalEffort = config('ai.chat.effort');
         $originalRounds = config('ai.chat.max_tool_rounds');
+        $originalPerDay = config('ai.chat.ip_per_day');
 
         $this->actingAs($this->agent)->put('/admin/settings/assistant', [
             'history'         => 6,
             'max_messages'    => 20,
             'retention_days'  => 30,
             'daily_limit'     => 200,
+            'ip_per_minute'   => 20,
+            'ip_per_day'      => 500,
             'effort'          => 'medium',
             'max_tool_rounds' => 1,
         ])->assertRedirect();
@@ -268,6 +279,7 @@ class SettingsTest extends TestCase
         $this->assertSame(6, config('ai.chat.history'));
         $this->assertSame('medium', config('ai.chat.effort'));
         $this->assertSame(1, config('ai.chat.max_tool_rounds'));
+        $this->assertSame(500, config('ai.chat.ip_per_day'));
 
         $this->actingAs($this->agent)->delete('/admin/settings/assistant')->assertRedirect();
 
@@ -275,6 +287,7 @@ class SettingsTest extends TestCase
         $this->assertSame($original, config('ai.chat.history'));
         $this->assertSame($originalEffort, config('ai.chat.effort'));
         $this->assertSame($originalRounds, config('ai.chat.max_tool_rounds'));
+        $this->assertSame($originalPerDay, config('ai.chat.ip_per_day'));
     }
 
     public function test_the_model_and_driver_cannot_be_overridden_from_the_settings_table(): void

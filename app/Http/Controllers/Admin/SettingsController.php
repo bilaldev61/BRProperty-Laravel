@@ -248,6 +248,8 @@ class SettingsController extends Controller
             'max_messages'    => ['required', 'integer', 'min:5', 'max:100'],
             'retention_days'  => ['required', 'integer', 'min:7', 'max:730'],
             'daily_limit'     => ['required', 'integer', 'min:50', 'max:100000'],
+            'ip_per_minute'   => ['required', 'integer', 'min:1', 'max:120'],
+            'ip_per_day'      => ['required', 'integer', 'min:1', 'max:100000'],
             'effort'          => ['required', Rule::in(['none', 'low', 'medium', 'high'])],
             'max_tool_rounds' => ['required', 'integer', 'min:1', 'max:4'],
         ]);
@@ -257,6 +259,8 @@ class SettingsController extends Controller
             'ai.chat.max_messages'    => (int) $data['max_messages'],
             'ai.chat.retention_days'  => (int) $data['retention_days'],
             'ai.chat.daily_limit'     => (int) $data['daily_limit'],
+            'ai.chat.ip_per_minute'   => (int) $data['ip_per_minute'],
+            'ai.chat.ip_per_day'      => (int) $data['ip_per_day'],
             'ai.chat.model_enabled'   => $request->boolean('model_enabled'),
             'ai.chat.quick_answers'   => $request->boolean('quick_answers'),
             'ai.chat.effort'          => $data['effort'],

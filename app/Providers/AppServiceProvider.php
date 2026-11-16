@@ -78,8 +78,8 @@ class AppServiceProvider extends ServiceProvider
             ], 429);
 
             return [
-                Limit::perMinute(8)->by('assistant:' . $request->ip())->response($busy),
-                Limit::perDay(150)->by('assistant-day:' . $request->ip())->response($busy),
+                Limit::perMinute((int) config('ai.chat.ip_per_minute'))->by('assistant:' . $request->ip())->response($busy),
+                Limit::perDay((int) config('ai.chat.ip_per_day'))->by('assistant-day:' . $request->ip())->response($busy),
                 Limit::perDay((int) config('ai.chat.daily_limit'))->by('assistant-site')->response($busy),
             ];
         });

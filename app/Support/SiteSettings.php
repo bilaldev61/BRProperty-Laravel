@@ -31,6 +31,8 @@ class SiteSettings
         'ai.chat.max_messages',
         'ai.chat.retention_days',
         'ai.chat.daily_limit',
+        'ai.chat.ip_per_minute',
+        'ai.chat.ip_per_day',
         'ai.chat.model_enabled',
         'ai.chat.quick_answers',
         'ai.chat.effort',

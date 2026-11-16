@@ -482,6 +482,34 @@ class AssistantTest extends TestCase
             ->assertJsonPath('message', fn($m) => str_contains($m, config('agent.phone')));
     }
 
+    public function test_the_per_visitor_minute_limit_is_configurable(): void
+    {
+        $this->fake();
+        // The burst ceiling is a config knob now, not a hardcoded 8: lowering it
+        // must move the point where the chat starts handing back the phone.
+        config(['ai.chat.ip_per_minute' => 2]);
+
+        $this->ask('First')->assertOk();
+        $this->ask('Second')->assertOk();
+
+        $this->ask('Third')->assertStatus(429);
+    }
+
+    public function test_the_per_visitor_daily_limit_is_configurable(): void
+    {
+        $this->fake();
+        // Keep the burst limit high so the daily ceiling is the one that fires.
+        // This is the limit a long testing session hits, and it is admin-tunable.
+        config(['ai.chat.ip_per_minute' => 50, 'ai.chat.ip_per_day' => 2]);
+
+        $this->ask('First')->assertOk();
+        $this->ask('Second')->assertOk();
+
+        $this->ask('Third')
+            ->assertStatus(429)
+            ->assertJsonPath('message', fn($m) => str_contains($m, config('agent.phone')));
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Retention

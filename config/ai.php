@@ -162,6 +162,14 @@ return [
         'max_messages' => (int) env('AI_CHAT_MAX_MESSAGES', 30),
 
         /*
+         | Per-visitor ceilings, keyed by IP: a burst limit and a daily limit.
+         | Admin-tunable so a heavy day of testing is not cut off mid-chat; the
+         | site-wide daily_limit below stays the backstop on the total bill.
+         */
+        'ip_per_minute' => (int) env('AI_CHAT_IP_PER_MINUTE', 8),
+        'ip_per_day' => (int) env('AI_CHAT_IP_PER_DAY', 150),
+
+        /*
          | Visitor messages the whole site may send in a day. A hard ceiling on
          | the bill if the bubble is ever hammered; past it, visitors get the
          | agent's number instead of an answer.
