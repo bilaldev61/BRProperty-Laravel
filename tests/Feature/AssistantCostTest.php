@@ -372,6 +372,49 @@ class AssistantCostTest extends TestCase
         $this->assertSame('ai', ChatMessage::where('role', ChatMessage::ASSISTANT)->value('answered_by'));
     }
 
+    public function test_real_links_wrapped_in_markdown_are_not_judged_invented(): void
+    {
+        // Observed live: the model searched properly, then wrote real links in
+        // the rules layer's markdown format. The closing bracket made every
+        // slug look fake and the whole true comparison was replaced by a guide.
+        $real = $this->property();
+        $reply = "Here's a comparison:\n- [" . $real->title . '](' . route('properties.show', $real) . ")\nWould you like more details?";
+        $this->fake(new FakeAiConnector($reply));
+
+        $response = $this->ask('Tell me what I should check before buying')->assertOk();
+
+        $this->assertSame($reply, $response->json('reply'));
+        $this->assertSame('ai', ChatMessage::where('role', ChatMessage::ASSISTANT)->value('answered_by'));
+    }
+
+    public function test_a_real_link_followed_by_a_full_stop_is_kept(): void
+    {
+        $real = $this->property();
+        $reply = 'Try this one: ' . route('properties.show', $real) . '.';
+        $this->fake(new FakeAiConnector($reply));
+
+        $response = $this->ask('Tell me what I should check before buying')->assertOk();
+
+        $this->assertSame($reply, $response->json('reply'));
+        $this->assertSame('ai', ChatMessage::where('role', ChatMessage::ASSISTANT)->value('answered_by'));
+    }
+
+    public function test_an_invented_markdown_item_is_stripped_without_taking_the_real_one(): void
+    {
+        $real = $this->property();
+        $reply = "I found 2 listings:\n"
+            . '- [' . $real->title . '](' . route('properties.show', $real) . ")\n"
+            . "- [Canal view 3-bed with private terrace](http://localhost:8000/properties/canal-view-3-bed-with-private-terrace)";
+        $this->fake(new FakeAiConnector($reply));
+
+        $response = $this->ask('Tell me what I should check before buying')->assertOk();
+
+        $this->assertStringContainsString(route('properties.show', $real), $response->json('reply'));
+        $this->assertStringContainsString($real->title, $response->json('reply'));
+        $this->assertStringNotContainsString('canal-view-3-bed', $response->json('reply'));
+        $this->assertStringNotContainsString('Canal view 3-bed', $response->json('reply'));
+    }
+
     public function test_the_never_invent_rule_sits_in_the_cacheable_prefix(): void
     {
         $fake = $this->fake();
@@ -382,5 +425,60 @@ class AssistantCostTest extends TestCase
         $marker = (int) strpos($prompt, 'CURRENT DATA');
 
         $this->assertStringContainsString('Never invent a listing or a URL', substr($prompt, 0, $marker));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | The search stall
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_a_search_promise_with_no_tool_call_is_sent_back_once(): void
+    {
+        // Live failure: "Let me search... One moment please..." with tools=NULL
+        // ended the turn, and the visitor had to say "yes" to get the search.
+        $stall = 'I can help compare properties, but I need to check the current listings. Let me search for those. One moment please...';
+        $answer = 'The Downtown 2-bed is AED 2,350,000 and the Marina 3-bed is AED 3,650,000.';
+        $fake = $this->fake((new FakeAiConnector())->repliesWith($stall)->repliesWith($answer));
+
+        $response = $this->ask('compare 2 bed in dubai dwntown vs 3 bed in in dubai marina')->assertOk();
+
+        $this->assertSame($answer, $response->json('reply'));
+        $this->assertSame(2, $fake->calls);
+
+        // The retry carries the stall and a directive to use the tool now.
+        $last = $fake->messages[count($fake->messages) - 1];
+        $this->assertSame('user', $last['role']);
+        $this->assertStringContainsString('Call search_properties now', $last['content']);
+        $this->assertSame($stall, $fake->messages[count($fake->messages) - 2]['content']);
+
+        // Both attempts are billed to the one visitor message, rounds running on.
+        $stored = ChatMessage::where('role', ChatMessage::ASSISTANT)->latest('id')->first();
+        $this->assertSame(1000, $stored->tokens);
+        $usage = ChatUsage::orderBy('round')->get();
+        $this->assertSame([0, 1], $usage->pluck('round')->all());
+        $this->assertSame([$stored->id, $stored->id], $usage->pluck('chat_message_id')->all());
+    }
+
+    public function test_a_second_stall_is_served_rather_than_retried_again(): void
+    {
+        // One retry is the budget: a model that keeps narrating must not loop.
+        $stall = 'Let me search the listings for you. One moment please...';
+        $fake = $this->fake((new FakeAiConnector())->repliesWith($stall)->repliesWith($stall));
+
+        $this->ask('compare 2 bed in dubai dwntown vs 3 bed in in dubai marina')->assertOk();
+
+        $this->assertSame(2, $fake->calls);
+    }
+
+    public function test_a_stall_phrase_after_a_real_search_is_not_retried(): void
+    {
+        // Tools already ran, so the model did search - the wording is harmless.
+        $fake = $this->fake(new FakeAiConnector('Let me check the listings for you. I found the Downtown 2-bed.'));
+        $fake->callsTool('search_properties', ['area' => 'Downtown Dubai']);
+
+        $this->ask('compare 2 bed in dubai dwntown vs 3 bed in in dubai marina')->assertOk();
+
+        $this->assertSame(1, $fake->calls);
     }
 }

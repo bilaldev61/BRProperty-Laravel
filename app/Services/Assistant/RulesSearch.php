@@ -4,6 +4,7 @@ namespace App\Services\Assistant;
 
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
+use App\Models\Property;
 use App\Services\Listings\PropertySearch;
 use App\Support\CatalogueCache;
 use App\Support\Format;
@@ -39,12 +40,12 @@ class RulesSearch
     private const VIEWING_WORDS = '/\b(viewings?|inspection)\b/';
 
     /** A browse for the catalogue: a quantifier plus a property noun, or a set phrase. */
-    private const BROWSE_WORD = '/\b(other|another|more|different|alternative|else|all|everything|every|any|anything|something)\b/';
+    private const BROWSE_WORD = '/\b(other|another|more|different|alternative|else|all|everything|every|any|anything|something|anyothers?)\b/';
     private const BROWSE_NOUN = '/\b(propert\w*|listings?|homes?|houses?|villas?|apartments?|flats?|options?|areas?|sale|rent|stock|inventory)\b/';
-    private const BROWSE_PHRASE = '/\bwhat do you have\b|\bwhat have you got\b|\bwhat is available\b|\bwhats available\b|\banything else\b|\bsomething else\b|\bmore in other\b|\bother areas?\b|\bmore options?\b|\bshow me (?:more|all|other|listings|properties|homes|houses|villas|apartments|flats|options)\b/';
+    private const BROWSE_PHRASE = '/\bwhat do you have\b|\bwhat have you got\b|\bwhat is available\b|\bwhats available\b|\banything else\b|\bsomething else\b|\bmore in other\b|\bother areas?\b|\bmore options?\b|\banyothers?\b|\bshow me (?:more|all|other|listings|properties|homes|houses|villas|apartments|flats|options)\b/';
 
     /** Explicit "others" wording - browses that drop the listing on screen. */
-    private const OTHERS_WORD = '/\b(other|another|different|alternative|else|more)\b/';
+    private const OTHERS_WORD = '/\b(other|another|different|alternative|else|more|anyothers?)\b/';
 
     /** The landmark vocabulary, bound to the types recorded in the nearby JSON. */
     private const LANDMARKS = [
@@ -60,6 +61,136 @@ class RulesSearch
 
     /** Word-boundaried so "linear" never reads as "near"; "enear" is a live typo. */
     private const PROXIMITY_PREP = '/\b(?:e?near(?:by)?|close to|walking distance(?: to)?)\b/';
+
+    /** Find verbs that introduce a keyword browse ("show me canal homes"). */
+    private const FIND_VERB = '/\b(?:f[iy]nd|show me|search|looking for)\b/';
+
+    /** The type vocabulary parse() reads, so a type word keeps its own path. */
+    private const TYPE_WORDS = '/\b(condo|condominium|apartment|flat|unit|townhouse|townhome|duplex|triplex|farm ?house|acre|plot|lot|land|homesite|acreage|house|home|bungalow|villa|ranch|detached|single[- ]family)s?\b/';
+
+    /**
+     * Words that never become a keyword: grammar, browse wording, and the
+     * dimensions the search already reads on its own.
+     */
+    private const KEYWORD_STOP = [
+        'the',
+        'a',
+        'an',
+        'some',
+        'something',
+        'anything',
+        'everything',
+        'any',
+        'all',
+        'more',
+        'other',
+        'another',
+        'different',
+        'else',
+        'instead',
+        'for',
+        'sale',
+        'rent',
+        'renting',
+        'rental',
+        'lease',
+        'buy',
+        'buying',
+        'sell',
+        'selling',
+        'to',
+        'in',
+        'with',
+        'and',
+        'or',
+        'of',
+        'near',
+        'nearby',
+        'close',
+        'walking',
+        'distance',
+        'me',
+        'us',
+        'you',
+        'i',
+        'we',
+        'u',
+        'ur',
+        'your',
+        'it',
+        'this',
+        'that',
+        'these',
+        'those',
+        'there',
+        'here',
+        'ones',
+        'one',
+        'only',
+        'please',
+        'pls',
+        'plss',
+        'show',
+        'find',
+        'search',
+        'looking',
+        'look',
+        'want',
+        'need',
+        'have',
+        'has',
+        'do',
+        'does',
+        'is',
+        'are',
+        'can',
+        'which',
+        'what',
+        'currently',
+        'right',
+        'now',
+        'properties',
+        'property',
+        'listings',
+        'listing',
+        'homes',
+        'home',
+        'houses',
+        'house',
+        'villas',
+        'villa',
+        'apartments',
+        'apartment',
+        'flats',
+        'flat',
+        'options',
+        'option',
+        'places',
+        'place',
+        'price',
+        'prices',
+        'size',
+        'details',
+        'photos',
+        'cheap',
+        'cheaper',
+        'nice',
+        'good',
+        'new',
+        'budget',
+        'aed',
+        'under',
+        'over',
+        'around',
+        'about',
+        'bed',
+        'beds',
+        'bedroom',
+        'bedrooms',
+        'bath',
+        'baths',
+        'studio',
+    ];
 
     /**
      * A find signal, so "any metro nearby?" stays a question about the listing
@@ -182,7 +313,7 @@ class RulesSearch
             return null;
         }
 
-        $browse = self::isCatalogueBrowse($text) || self::isProximityBrowse($text) || self::isRejection($text);
+        $browse = self::isCatalogueBrowse($text) || self::isProximityBrowse($text) || self::isKeywordBrowse($text) || self::isRejection($text);
 
         // A bare yes takes up the offer to widen - but never over a judgement.
         $agreed = ! self::isJudgement($text)
@@ -231,6 +362,110 @@ class RulesSearch
         return (bool) (preg_match(self::PROXIMITY_INTENT, $text)
             && preg_match(self::PROXIMITY_PREP, $text)
             && self::landmarkType($text) !== null);
+    }
+
+    /**
+     * A browse keyed on a word the search does not know as an area, landmark or
+     * type - "near canal", "show me canal homes", "canal ones". The word becomes
+     * a keyword query over the listing text, so a new visitor word needs no new
+     * rule. Known vocabulary keeps its own path, and questions about the listing
+     * on screen ("is this near the canal?") stay with the model.
+     */
+    public static function isKeywordBrowse(string $text): bool
+    {
+        return self::keywordCandidate($text) !== null;
+    }
+
+    /** The first unknown content word a browse shape points at, or null. */
+    private static function keywordCandidate(string $text): ?string
+    {
+        if (
+            self::isJudgement($text)
+            || preg_match('/\b(?:is|are|does|do|has|have)\s+(?:it|this|that|there)\b/', $text)
+        ) {
+            return null;
+        }
+
+        $tokens = preg_split('/\s+/', $text) ?: [];
+        $starts = [];
+
+        foreach ($tokens as $i => $token) {
+            if (preg_match(self::PROXIMITY_PREP, $token) || preg_match(self::FIND_VERB, $token)) {
+                $starts[] = [$i + 1, 2];
+            }
+
+            // "canal ones" - only the word immediately before the plural marker.
+            if ($token === 'ones' && $i > 0) {
+                $starts[] = [$i - 1, 1];
+            }
+        }
+
+        // "show me" and "looking for" are two tokens; the content starts after both.
+        foreach (['show me' => 'me', 'looking for' => 'for'] as $phrase => $last) {
+            if (preg_match('/\b' . $phrase . '\b/', $text)) {
+                $starts[] = [array_search($last, $tokens, true) + 1, 2];
+            }
+        }
+
+        foreach ($starts as [$start, $max]) {
+            $picked = [];
+
+            for ($i = $start; $i < count($tokens) && count($picked) < $max; $i++) {
+                $word = $tokens[$i];
+
+                if (
+                    in_array($word, self::KEYWORD_STOP, true)
+                    || in_array($word, self::GENERIC_AREA_WORDS, true)
+                    || preg_match('/\d/', $word)
+                ) {
+                    if ($picked !== []) {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                $picked[] = $word;
+            }
+
+            if ($picked === []) {
+                continue;
+            }
+
+            $candidate = implode(' ', $picked);
+
+            if (! self::isKnownVocabulary($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /** Does the search already read this word as an area, landmark or type? */
+    private static function isKnownVocabulary(string $candidate): bool
+    {
+        foreach (explode(' ', $candidate) as $word) {
+            if (
+                isset(self::AREA_ALIASES[$word])
+                || self::landmarkType($word) !== null
+                // "schools" is the landmark vocabulary too, just plural.
+                || self::landmarkType(Str::singular($word)) !== null
+                || preg_match(self::RENT_WORDS, $word)
+                || preg_match(self::BUY_WORDS, $word)
+                || preg_match(self::TYPE_WORDS, $word)
+            ) {
+                return true;
+            }
+
+            foreach (app(CatalogueCache::class)->suburbs() as $suburb) {
+                if (preg_match('/\b' . preg_quote($word, '/') . '\b/i', (string) $suburb)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /** "Not this one" drops the listing on screen; "not this expensive" does not. */
@@ -353,7 +588,59 @@ class RulesSearch
             $criteria['nearby'] = self::landmarkType($text);
         }
 
+        // An unknown browse word ("near canal") becomes a keyword query over the
+        // listing text - one generic path instead of a rule per visitor word.
+        if (($keyword = self::keywordCandidate($text)) !== null) {
+            $criteria['keywords'] = $this->correctedKeyword($keyword);
+        }
+
         return $criteria;
+    }
+
+    /**
+     * A hurried visitor types "cnanal"; the records say "canal". One edit of
+     * slack against the words the listings actually use - no hand-kept typo
+     * list - and an unmatchable word stays as typed so the answer is an honest
+     * "nothing matches", never a silent widening.
+     */
+    private function correctedKeyword(string $keyword): string
+    {
+        $words = [];
+
+        foreach (Property::published()->pluck('title') as $title) {
+            foreach (str_word_count((string) $title, 1) as $word) {
+                $word = Str::lower($word);
+
+                if (mb_strlen($word) >= 4) {
+                    $words[$word] = true;
+                }
+            }
+        }
+
+        $corrected = [];
+
+        foreach (explode(' ', $keyword) as $part) {
+            if (isset($words[$part]) || mb_strlen($part) < 4) {
+                $corrected[] = $part;
+
+                continue;
+            }
+
+            $best = $part;
+            $distance = PHP_INT_MAX;
+
+            foreach (array_keys($words) as $word) {
+                $d = levenshtein($part, $word);
+
+                if ($d < $distance) {
+                    [$best, $distance] = [$word, $d];
+                }
+            }
+
+            $corrected[] = $distance <= 1 ? $best : $part;
+        }
+
+        return implode(' ', $corrected);
     }
 
     /**
@@ -508,6 +795,7 @@ class RulesSearch
             isset($criteria['min_bedrooms']) ? $criteria['min_bedrooms'] . '+ bedroom' : null,
             isset($criteria['type']) ? ($nouns[$criteria['type']] ?? Str::lower(config('agent.property_types.' . $criteria['type']))) : null,
             $criteria['area'] ?? null ? 'in ' . $criteria['area'] : null,
+            isset($criteria['keywords']) ? 'matching "' . $criteria['keywords'] . '"' : null,
             $nearby,
             $price,
             ($criteria['rent'] ?? false) ? 'to rent' : null,

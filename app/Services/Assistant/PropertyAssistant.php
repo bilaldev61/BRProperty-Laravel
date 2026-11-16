@@ -108,6 +108,33 @@ class PropertyAssistant
         [$answeredBy, $tokens] = [ChatMessage::BY_AI, $this->ai->lastTokens()];
         $usage = $this->ai->lastRequests();
 
+        // "Let me search... one moment" with no tool call is a promise, not an
+        // answer - the visitor would have to say "yes" to get the search they
+        // already asked for. Send it back once, told to use the tool now.
+        if ($this->stalledSearch($reply, $usage)) {
+          $nudge = array_merge($this->history($conversation), [
+            ['role' => ChatMessage::ASSISTANT, 'content' => $reply],
+            ['role' => ChatMessage::USER, 'content' => 'Do not narrate the search. Call search_properties now with what I asked for, then answer from the results.'],
+          ]);
+
+          $reply = trim($this->ai->converse(
+            $this->system($conversation),
+            $nudge,
+            AssistantTools::definitions(),
+            fn(string $name, array $input) => $tools->run($name, $input),
+            $conversation->token,
+          ));
+
+          // Both attempts belong to this one visitor message: add their tokens
+          // and keep the round numbers running so the usage panel reads true.
+          $tokens += $this->ai->lastTokens();
+          $offset = count($usage);
+          $usage = array_merge($usage, array_map(
+            fn(array $request) => ['round' => $request['round'] + $offset] + $request,
+            $this->ai->lastRequests(),
+          ));
+        }
+
         // A small model can copy the rules layer's list format and invent the
         // listings inside it, URLs included. Every listing link is checked
         // against the records; a reply built only on invented ones is replaced
@@ -162,6 +189,23 @@ class PropertyAssistant
     return $reply;
   }
 
+  /**
+   * A reply that promises a search while no tool ran this turn. Tool results
+   * already in hand mean the model did search - whatever it wrote next stands.
+   *
+   * @param  list<array<string, mixed>>  $usage
+   */
+  private function stalledSearch(string $reply, array $usage): bool
+  {
+    foreach ($usage as $request) {
+      if (($request['tools'] ?? []) !== []) {
+        return false;
+      }
+    }
+
+    return (bool) preg_match('/\b(?:let me (?:search|check|look|find|pull)|one moment|just a moment|hold on|bear with me|i will search|searching (?:for|the|our))\b/i', $reply);
+  }
+
   /** Shown when the assistant cannot help - the visitor always has a way through. */
   public function fallback(): string
   {
@@ -196,10 +240,20 @@ class PropertyAssistant
       if (preg_match('#/properties/([^\s/?\#]+)#', $line, $m)) {
         $sawLink = true;
 
-        if (Property::published()->where('slug', $m[1])->exists()) {
+        // Markdown wrapping and trailing punctuation are not part of the slug:
+        // "[title](url)" otherwise reads as a fake "slug)" and a real answer dies.
+        $slug = rtrim($m[1], ')]}>\'".,;:!');
+
+        if (Property::published()->where('slug', $slug)->exists()) {
           $keptLink = true;
         } else {
-          if ($kept !== [] && preg_match('/^\s*(?:[-*]|\d+[.)])\s/', end($kept))) {
+          // A bare URL sits under its title line, so that line goes too. An
+          // inline markdown item carries its own title - the line above it
+          // belongs to a different listing and must stay.
+          if (
+            ! preg_match('/^\s*(?:[-*]|\d+[.)])\s/', $line)
+            && $kept !== [] && preg_match('/^\s*(?:[-*]|\d+[.)])\s/', end($kept))
+          ) {
             array_pop($kept);
           }
 

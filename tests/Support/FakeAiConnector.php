@@ -48,6 +48,9 @@ class FakeAiConnector implements AiConnector
     /** @var list<array{0: string, 1: array<string, mixed>}> */
     private array $script = [];
 
+    /** @var list<string> one reply per converse() call, then the default */
+    private array $replies = [];
+
     public function __construct(
         private string $reply = 'Thanks for getting in touch. I will confirm and come back to you.',
         private bool $configured = true,
@@ -68,6 +71,14 @@ class FakeAiConnector implements AiConnector
     public function callsTool(string $name, array $input = []): self
     {
         $this->script[] = [$name, $input];
+
+        return $this;
+    }
+
+    /** Queue a reply for the next converse() call, in order. Chainable. */
+    public function repliesWith(string $reply): self
+    {
+        $this->replies[] = $reply;
 
         return $this;
     }
@@ -118,7 +129,7 @@ class FakeAiConnector implements AiConnector
 
         $this->requests[] = $this->usageRecord(count($this->script), []);
 
-        return $this->reply;
+        return $this->replies === [] ? $this->reply : array_shift($this->replies);
     }
 
     public function lastTokens(): int

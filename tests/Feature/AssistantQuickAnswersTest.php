@@ -98,6 +98,58 @@ class AssistantQuickAnswersTest extends TestCase
         $this->assertNull($this->lastReply()->tokens);
     }
 
+    public function test_the_rent_question_is_answered_from_the_rental_record(): void
+    {
+        $property = $this->property(['is_for_rent' => true, 'rent_price' => 75000, 'rent_period' => 'year', 'rent_status' => 'available']);
+
+        $this->assertStringContainsString('AED 75,000 / year', $this->ask('What is the rent?', $property));
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertSame('rule:listing_rent', $this->lastReply()->answered_by);
+        $this->assertNull($this->lastReply()->tokens);
+    }
+
+    public function test_how_much_is_the_rent_asks_the_rent_not_the_sale_price(): void
+    {
+        $property = $this->property(['is_for_rent' => true, 'rent_price' => 9000, 'rent_period' => 'month', 'rent_status' => 'available']);
+
+        $reply = $this->ask('how much is the rent', $property);
+
+        $this->assertStringContainsString('AED 9,000 / month', $reply);
+        $this->assertStringNotContainsString('advertised price', $reply);
+        $this->assertSame('rule:listing_rent', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    public function test_a_sale_listing_says_it_is_not_advertised_for_rent(): void
+    {
+        $property = $this->property();
+
+        $this->assertStringContainsString('not advertised for rent', $this->ask('What is the rent?', $property));
+        $this->assertSame('rule:listing_rent', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+    }
+
+    public function test_browsing_for_rentals_is_still_a_search_not_the_page_rent(): void
+    {
+        $property = $this->property(['is_for_rent' => true, 'rent_price' => 75000, 'rent_period' => 'year', 'rent_status' => 'available']);
+        $other = $this->property([
+            'title' => '1-bed flat in JLT',
+            'type' => 'apartment',
+            'suburb' => 'JLT',
+            'is_for_rent' => true,
+            'rent_price' => 60000,
+            'rent_period' => 'year',
+            'rent_status' => 'available',
+        ]);
+
+        $reply = $this->ask('any other properties for rent', $property);
+
+        $this->assertSame('rule:search', $this->lastReply()->answered_by);
+        $this->assertSame(0, $this->ai->calls);
+        $this->assertStringContainsString('/properties/' . $other->slug, $reply);
+        $this->assertStringNotContainsString('/properties/' . $property->slug, $reply);
+    }
+
     /** @return array<string, array{0: string, 1: string}> */
     public static function agencyQuestions(): array
     {

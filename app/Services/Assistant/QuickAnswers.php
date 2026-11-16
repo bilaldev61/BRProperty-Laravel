@@ -85,6 +85,7 @@ class QuickAnswers
     /** Facts about the listing on screen, answered from its record. */
     private const LISTING_FACTS = [
         'price'         => '/\b(price|cost|how much|kitne ka|kitne ki|qeemat|qimat|demand|rate)\b/',
+        'rent'          => '/\b(rent|rental|kiraya|lease)\b/',
         'size'          => '/\b(size|how big|marla|kanal|sq ?ft|square (feet|foot)|covered area|plot area|land area|kitna bara)\b/',
         'rooms'         => '/\b(bed(room)?s?|bath(room)?s?|rooms?|kamr[ae]y?|parking|car spaces?|garage)\b/',
         'status'        => '/\b(available|still for sale|for sale|sold|status|bik gaya|mil sakta)\b/',
@@ -304,11 +305,11 @@ class QuickAnswers
             }
         }
 
-        // A catalogue browse ("what do you have for sale", "show me more") or a
-        // proximity browse ("find those near metro") is a search, not a fact
-        // about the listing on screen. Hand it to the search layer, which reads
-        // only what the visitor typed.
-        if (RulesSearch::isCatalogueBrowse($text) || RulesSearch::isProximityBrowse($text)) {
+        // A catalogue browse ("what do you have for sale", "show me more"), a
+        // proximity browse ("find those near metro") or a keyword browse ("near
+        // canal for sale") is a search, not a fact about the listing on screen.
+        // Hand it to the search layer, which reads only what the visitor typed.
+        if (RulesSearch::isCatalogueBrowse($text) || RulesSearch::isProximityBrowse($text) || RulesSearch::isKeywordBrowse($text)) {
             return null;
         }
 
@@ -464,8 +465,11 @@ class QuickAnswers
 
         // A listing fact needs that listing page; elsewhere "how much?" needs the model.
         if ($onListing) {
+            // "How much is the rent?" is the rent question, not the sale price.
+            $rentAsked = preg_match(self::LISTING_FACTS['rent'], $text) === 1;
+
             foreach (self::LISTING_FACTS as $intent => $pattern) {
-                if (preg_match($pattern, $text) && ! ($intent === 'price' && $negotiating)) {
+                if (preg_match($pattern, $text) && ! ($intent === 'price' && ($negotiating || ($rentAsked && $property?->is_for_rent)))) {
                     $found[] = ['listing', $intent];
                 }
             }
@@ -528,6 +532,9 @@ class QuickAnswers
 
         $text = match ($intent) {
             'price'    => $this->price($property),
+            'rent'     => $property->rentDisplay()
+                ? 'The advertised rent is ' . $property->rentDisplay() . '.'
+                : 'It is not advertised for rent.',
             'size'     => $this->size($property),
             'rooms'    => $this->rooms($property),
             'status'   => $this->status($property),
