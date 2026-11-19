@@ -48,7 +48,7 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
-const URL = __ENV.VLLM_URL || '10.55.134.214:8000/v1/chat/completions';
+const URL = __ENV.VLLM_URL || 'http://10.55.134.214:8000/v1/chat/completions';
 const KEY = __ENV.VLLM_KEY || 'local'; // vLLM ignores the key, but the header must exist
 
 function bodyFor(question) {
@@ -110,7 +110,7 @@ export default function () {
 
   // One atomic log call so concurrent VUs never interleave a block.
   console.log(
-    `=== vu ${__VU} iter ${__ITER} | ${Math.round(res.timings.duration)}ms | tokens ${tokens || '?'} | gen ${gen || '?'} | ${finish || res.status} ===\n` +
+    `=== vu ${__VU} iter ${__ITER} | at ${Math.floor(Date.now() / 1000)} | ${Math.round(res.timings.duration)}ms | tokens ${tokens || '?'} | gen ${gen || '?'} | ${finish || res.status} ===\n` +
     `Q: ${question}\n` +
     `A: ${answerText(message)}\n`
   );

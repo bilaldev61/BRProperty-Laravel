@@ -143,8 +143,9 @@ if ($cut !== false) {
 }
 
 // One block per answer: header, "Q: ...", then multi-line "A: ..." up to the next header.
+// "at" (completion epoch) is optional: logs from before the timestamp change lack it.
 preg_match_all(
-    '/^=== vu (\d+) iter (\d+) \| (\d+)ms \| tokens (\S+) \| gen (\S+) \| (\S+) ===\nQ: (.*?)\nA: (.*?)(?=\n=== vu |\z)/ms',
+    '/^=== vu (\d+) iter (\d+) \| (?:at (\d+) \| )?(\d+)ms \| tokens (\S+) \| gen (\S+) \| (\S+) ===\nQ: (.*?)\nA: (.*?)(?=\n=== vu |\z)/ms',
     $log,
     $blocks,
     PREG_SET_ORDER
@@ -160,16 +161,16 @@ $genSum = 0;
 $genN = 0;
 $msSum = 0;
 foreach ($blocks as $b) {
-    $answer = rtrim($b[8]);
-    $isTool = $b[6] === 'tool_calls';
+    $answer = rtrim($b[9]);
+    $isTool = $b[7] === 'tool_calls';
     $isTool ? $tool++ : $prose++;
-    $msSum += (int) $b[3];
-    if (is_numeric($b[4])) {
-        $tokenSum += (int) $b[4];
+    $msSum += (int) $b[4];
+    if (is_numeric($b[5])) {
+        $tokenSum += (int) $b[5];
         $tokenN++;
     }
-    if (is_numeric($b[5])) {
-        $genSum += (int) $b[5];
+    if (is_numeric($b[6])) {
+        $genSum += (int) $b[6];
         $genN++;
     }
     if (preg_match_all('/\[tool_call\]\s*(\w+)\(/', $answer, $tm)) {
@@ -180,11 +181,12 @@ foreach ($blocks as $b) {
     $entries[] = [
         'vu' => (int) $b[1],
         'iter' => (int) $b[2],
-        'ms' => (int) $b[3],
-        'tokens' => $b[4],
-        'gen' => $b[5],
-        'finish' => $b[6],
-        'q' => trim($b[7]),
+        'at' => $b[3] !== '' ? (int) $b[3] : null,
+        'ms' => (int) $b[4],
+        'tokens' => $b[5],
+        'gen' => $b[6],
+        'finish' => $b[7],
+        'q' => trim($b[8]),
         'a' => $answer,
         'type' => $isTool ? 'tool' : 'prose',
     ];
@@ -204,6 +206,31 @@ foreach ($entries as $e) {
     }
 }
 $fastRate = $fastMs > 0 ? $fastGen / ($fastMs / 1000) : 0;
+
+// Felt write speed per request over the run: each reply's written tokens divided
+// by its own wall-clock time, binned 5s. Early bins sit near the alone ceiling,
+// the saturated phase sinks - the good day and the bad day in one picture.
+$feltChart = '';
+$stamped = array_values(array_filter($entries, fn($e) => $e['at'] !== null && is_numeric($e['gen']) && $e['ms'] > 0));
+if ($stamped) {
+    $t0 = min(array_column($stamped, 'at'));
+    $t1 = max(array_column($stamped, 'at'));
+    $bins = [];
+    foreach ($stamped as $e) {
+        $bins[intdiv($e['at'] - $t0, 5)][] = (int) $e['gen'] / ($e['ms'] / 1000);
+    }
+    ksort($bins);
+    $avgPts = $maxPts = [];
+    foreach ($bins as $k => $vals) {
+        $t = $t0 + $k * 5 + 2.5;
+        $avgPts[] = [$t, array_sum($vals) / count($vals)];
+        $maxPts[] = [$t, max($vals)];
+    }
+    $feltChart = svgChart('Write speed felt per request (tok/s)', [
+        ['label' => 'avg per request', 'points' => $avgPts],
+        ['label' => 'fastest in bin', 'points' => $maxPts],
+    ], 'reqps', $t0, $t1 + 5);
+}
 arsort($toolNames);
 
 $end = (int) strtotime($summary['finished_at'] ?? 'now') + 5;
@@ -226,6 +253,7 @@ foreach ($genRate['points'] as $p) {
     $gpuPeak = max($gpuPeak, $p[1]);
 }
 $charts .= svgChart('vLLM Generation Tokens/s', [$genRate], 'reqps', $start, $end);
+$charts = $feltChart . $charts;
 
 $lat = $summary['model_latency_ms'] ?? [];
 $card = fn(string $label, string $value, string $sub = '') =>
@@ -245,6 +273,8 @@ $cards .= $card('Avg sent / turn', (string) $avgSent, 'rules + tool menu + quest
 $cards .= $card('Tokens written', number_format($genSum), 'output tokens, all turns');
 $cards .= $card('Avg written / turn', (string) $avgGen, 'the reply the model wrote (output)');
 $cards .= $card('Avg write speed / request', number_format($genThroughput, 1) . ' tok/s', 'under load, includes queue wait');
+$cards .= $card('Write speed, light load', number_format($fastRate, 1) . ' tok/s', 'requests under 3 s: little or no queue');
+$cards .= $card('GPU total peak', $gpuPeak > 0 ? '~' . number_format($gpuPeak) . ' tok/s' : 'n/a', 'all concurrent replies combined');
 
 $toolList = '';
 foreach ($toolNames as $name => $n) {
@@ -338,8 +368,9 @@ $notes = <<<'HTML'
   <li><b>Finish reason.</b> <code>stop</code> = the model wrote a prose answer. <code>tool_calls</code> = it asked to run a tool (<code>search_properties</code> / <code>get_property</code> / <code>save_lead</code>) before answering &mdash; exactly what the comparison/recommendation questions are meant to trigger.</li>
   <li><b>Tool rows show a request, not an answer.</b> The harness sends one request per question and never runs the tool, so a <code>tool_calls</code> row shows the tool the model asked for plus its arguments. The final prose answer needs a second round (run the tool, send the result back) &mdash; that round is the Laravel app's job, not this GPU-only test.</li>
   <li><b>Sent + written = total.</b> Each row's <i>total</i> badge is everything in the exchange: the <i>sent</i> input (rules + tool menu + question, ~{SENT} tok) plus the <i>written</i> output (the reply, ~{WRITTEN} tok). So a row reading 1,994 total / 50 written means the 50 are <i>part of</i> the 1,994, not on top of it. Written is what the GPU decodes token-by-token, so it drives generation speed.</li>
-  <li><b>&ldquo;Cached&rdquo; is input-only, and reads 0 here.</b> Caching can only reuse the <i>sent</i> prefix (identical rules + tool menu across requests); the reply is always written fresh. Local vLLM does reuse the prefix internally for speed, but reports no cached-token counts, so the admin cache cards show 0 &mdash; expected, not broken. Only paid cloud models report cached tokens.</li>
+  <li><b>&ldquo;Cached&rdquo; is input-only.</b> Caching can only reuse the <i>sent</i> prefix (identical rules + tool menu across requests); the reply is always written fresh. The reused prefix already lives in GPU memory (vLLM prefix cache), so each request re-sends the text but the GPU skips re-reading ~99% of it &mdash; only the fresh tail is read. vLLM reports cached-token counts in usage only when started with <code>--enable-prompt-tokens-details</code>; without the flag it still reuses internally but reports 0, so cache cards showing 0 are expected, not broken. Paid cloud models report cached tokens too.</li>
   <li><b>Write speed: one request vs the whole GPU.</b> &ldquo;Avg write speed / request&rdquo; divides written tokens by each request's full wall-clock time &mdash; queue wait included &mdash; so the congested phases drag it far below the GPU's real speed. In this run the fast low-load requests wrote at {FAST}, while the GPU's total output peaked at {PEAK} across all concurrent replies (Generation Tokens/s chart). The slow tail is waiting in line, not slow writing.</li>
+  <li><b>The felt-speed chart is the good day and the bad day in one picture.</b> &ldquo;Write speed felt per request&rdquo; plots every reply's own written tokens &divide; its own latency, binned every 5 s. Early bins (1&ndash;8 users) sit near the alone ceiling; the 100-user phase sinks to a few tok/s. The gap between the two lines is queue wait, not slower writing &mdash; the GPU writes at the same speed, each person just waits longer for their turn.</li>
   <li><b>failed_rate 0%.</b> No HTTP errors: every request returned a valid model response, even at 100 concurrent users.</li>
   <li><b>p99 in summary.json.</b> The first run omitted p99 (k6's default summary stats leave it out); the script now sets <code>summaryTrendStats</code> so it appears.</li>
 </ul>
