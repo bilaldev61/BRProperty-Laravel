@@ -48,7 +48,7 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
-const URL = __ENV.VLLM_URL || 'http://10.30.141.214:8000/v1/chat/completions';
+const URL = __ENV.VLLM_URL || '10.55.134.214:8000/v1/chat/completions';
 const KEY = __ENV.VLLM_KEY || 'local'; // vLLM ignores the key, but the header must exist
 
 function bodyFor(question) {
