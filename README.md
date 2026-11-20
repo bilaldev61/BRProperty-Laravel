@@ -317,22 +317,28 @@ vllm serve /path/to/Qwen3-14B-AWQ \
   --host 0.0.0.0 --port 8000 \
   --quantization awq \
   --max-model-len 8192 --gpu-memory-utilization 0.90 \
-  --enable-auto-tool-choice --tool-call-parser hermes
+  --enable-auto-tool-choice --tool-call-parser hermes \
+  --enable-prompt-tokens-details
 ```
 
 - `--enable-auto-tool-choice --tool-call-parser hermes` are required: without them
   vLLM rejects every tools request with a 400 and the assistant silently answers
   from the rules instead.
+- `--enable-prompt-tokens-details` is optional but recommended: it makes vLLM
+  report `cached_tokens` per request so the admin **Model usage** panel shows real
+  reuse numbers instead of 0.
 - `--max-model-len` must exceed the prompt (system + tool menu is roughly 2,400
   tokens before the visitor even speaks); 2048 is too small, 8192 is a safe floor
   on a 16 GB card.
 
 Run `php artisan config:clear` after any `.env` edit.
 
-**Local and free models show 0% "reused from cache" — expected, not a fault.**
-Caching discounts the *price* of tokens, and both already cost $0; vLLM also reports
-no cache split (`prompt_tokens_details` is null). It still reuses the prompt
-internally for speed. The cache figures only become meaningful on a paid cloud model.
+**Local models report 0% "reused from cache" unless vLLM runs with
+`--enable-prompt-tokens-details`.** Without the flag the engine still reuses the
+shared prompt prefix internally (that reuse is what keeps latency sane under
+load), it just doesn't report the split, so the panel shows 0 — a reporting gap,
+not a broken cache. Locally, prefix reuse saves GPU *time*, not money: tokens
+cost $0 either way. On paid cloud models the same figures become a price discount.
 
 > A LAN address (e.g. `10.x.x.x`) is reachable from your own network only. To serve
 > public traffic from a self-hosted model you need a tunnel/reverse proxy, and the
@@ -348,8 +354,9 @@ Laravel, no rate limiter) so the numbers reflect the GPU alone. It ramps
 | --- | --- |
 | `export-payload.php` | Boots Laravel offline and captures the real request body (system prompt + tool menu) to `payload.json`. Re-run when the prompt or tools change. |
 | `payload.json` | The captured body, replayed as the template for every request. |
-| `model-questions.json` | 50 questions only the model answers (judgement / opinion / comparison / recommendation) — the rule layer answers everything else for free. |
-| `load-model.js` | The ramp: a random question per request, logs each Q&A, writes `summary.json`. |
+| `model-questions.json` | 54 questions only the model answers (judgement / opinion / comparison / recommendation) — the rule layer answers everything else for free. |
+| `load-model.js` | The ramp: a random question per request, logs each Q&A with a completion timestamp, writes `summary.json`. |
+| `run.ps1` | One-command runner: clears the log, sets the Prometheus env vars, runs the ramp, rebuilds the report. |
 | `build-report.php` | Builds `public/load-test-report.html` from the last run. |
 | `docker-compose.yml`, `prometheus.yml`, `grafana/` | An isolated Prometheus (host `:9091`) + Grafana (`:3001`) stack that scrapes vLLM and receives k6's metrics. |
 
@@ -360,20 +367,26 @@ the LAN). Commands shown for PowerShell:
 # 1. monitoring stack (once)
 docker compose -f k6/docker-compose.yml up -d
 
-# 2. the ramp - records the transcript and stats
-$env:K6_PROMETHEUS_RW_SERVER_URL="http://localhost:9091/api/v1/write"
-$env:K6_PROMETHEUS_RW_TREND_STATS="p(50),p(95),p(99)"
-Remove-Item k6/replies.log -ErrorAction SilentlyContinue   # k6 appends; start fresh
-k6 run --out experimental-prometheus-rw --log-format=raw --log-output=file=k6/replies.log k6/load-model.js
+# 2. fresh log + ramp + report, one command
+.\k6\run.ps1
+```
 
-# 3. the HTML report
+`run.ps1` is the whole pipeline; to run the steps by hand instead, set
+`K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9091/api/v1/write` and
+`K6_PROMETHEUS_RW_TREND_STATS="p(50),p(95),p(99)"`, delete `k6/replies.log`
+(k6 appends across runs), then:
+
+```powershell
+k6 run --out experimental-prometheus-rw --log-format=raw --log-output=file=k6/replies.log k6/load-model.js
 php k6/build-report.php
 ```
 
-The report (summary cards, plain-English notes, GPU charts and a searchable Q&A
-transcript) is served at <http://localhost:8000/load-test-report.html>, and a
-**Load test report** button appears in **Admin → Assistant chats** whenever the
-file exists. Override the target with `VLLM_URL=http://<host>:8000/v1/chat/completions`.
+The report (summary cards, plain-English notes, GPU charts — including the
+per-request write-speed chart that shows light-load speed decaying into the
+saturated phase — and a searchable Q&A transcript) is served at
+<http://localhost:8000/load-test-report.html>, and a **Load test report** button
+appears in **Admin → Assistant chats** whenever the file exists. Override the
+target with `VLLM_URL=http://<host>:8000/v1/chat/completions`.
 
 `replies.log`, `summary.json` and the generated report are local run artifacts
 (gitignored); the harness scripts and question pool are what travel with the repo.
@@ -386,10 +399,14 @@ file exists. Override the target with `VLLM_URL=http://<host>:8000/v1/chat/compl
 php artisan test
 ```
 
-96 tests covering page rendering, filtering, SEO output, enquiry validation and
-rate limiting, admin auth and guest redirects, property CRUD with uploads, image
-deletion, testimonial management, the dashboard metric queries, settings
-save/validate/reset round-trips, and the profile and password flows.
+656 tests covering page rendering, filtering, SEO output and enquiry flows
+(including auto-replies and confirmations), admin auth, authorization, teams and
+notifications, property CRUD with uploads and image deletion, testimonial
+management, dashboard metrics, settings round-trips, and the profile and
+password flows — plus the whole chat assistant stack: quick answers, search
+rules, contact capture, cost accounting, adversarial and security behaviour,
+suggestions, the model connectors and reply guards, catalogue caching, and the
+phone-agent API.
 
 ---
 
